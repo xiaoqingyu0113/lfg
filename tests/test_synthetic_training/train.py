@@ -20,6 +20,7 @@ from omegaconf import OmegaConf
 import hydra
 from functools import partial
 from synthetic.data_generator import generate_data
+from lfg.util import timeit
 
 # CONFIG = OmegaConf.load('../../conf/config.yaml')
 # MODEL_CONFIG = CONFIG.model[CONFIG.model_name]
@@ -166,11 +167,13 @@ def get_model(config) -> nn.Module:
 
 
 
-def train_loss(model, model_pass, data, camera_param_dict, criterion):
+def train_loss(model, model_pass, data, camera_param_dict, criterion,aug_batch=30, aug_angle=2*torch.tensor(torch.pi, device=DEVICE)):
     data = data[0] # ignore the batch size
 
-    uv_pred = model_pass(model, data, camera_param_dict)
+    uv_pred = model_pass(model, data, camera_param_dict, aug_batch = aug_batch, aug_angle=aug_angle) # shape is (B, seq_len, 2)
     uv_gt = data[1:, 4:6].float().to(DEVICE)
+    uv_gt = uv_gt.unsqueeze(0).repeat(uv_pred.shape[0], 1, 1)
+
 
     loss = criterion(uv_gt, uv_pred)
 
@@ -186,7 +189,7 @@ def test_autoregr_loss(model, model_autoregr, test_loader, camera_param_dict, cr
     with torch.no_grad():
         test_loss = 0.0
         for data in test_loader:
-            loss = train_loss(model, model_autoregr, data, camera_param_dict, criterion)
+            loss = train_loss(model, model_autoregr, data, camera_param_dict, criterion, aug_batch=1, aug_angle=0.0)
             test_loss += loss.item()
 
         
@@ -220,12 +223,13 @@ def train_loop(config):
 
     # training loop
     model, model_autoregr = get_model(config)
+    model_autoregr = partial(model_autoregr, fraction_est=config.model.estimation_fraction)
     if config.model.continue_training:
         model_path = Path(tb_writer.get_logdir())/f'model_{config.model.model_name}.pth'
         model.load_state_dict(torch.load(model_path))
         print(f"model loaded from {model_path}")
 
-    model_autoregr = partial(model_autoregr, fraction_est=config.model.estimation_fraction)
+    
   
 
     criterion = nn.MSELoss()
@@ -262,25 +266,19 @@ def train_loop(config):
             spin = data[0,0,6:9].float() # get spin
             update_spin_info(spin, spin_info)
 
-            # data (batch_size, seq_len, input_size)
-            
-
-            loss = train_loss(model, model_autoregr, data, camera_param_dict, criterion)
-            total_loss += loss
+            optimizer.zero_grad()
+            loss = train_loss(model, model_autoregr, data, camera_param_dict, criterion,
+                              aug_angle=config.model.aug_angle*torch.tensor(torch.pi, device=DEVICE), 
+                              aug_batch=config.model.aug_batch)
             step_count += 1 # for logs
+            loss.backward()
+            optimizer.step()
 
             # batch backward and optimize
             if (i+1) % batch_traj == 0 or i+1 == len(train_loader):
-                total_loss /= batch_traj
                 # Print loss
-                tb_writer.add_scalars(main_tag='loss', tag_scalar_dict={'training':total_loss.item()}, global_step=step_count)
-                print(f'Epoch [{epoch+1}/{config.model.num_epochs}], Step [{i+1}/{len(train_loader)}], total_loss: {total_loss.item()}')
-
-                # Backward and optimize
-                total_loss.backward()
-                optimizer.step()
-                total_loss = torch.tensor(0.0).to(DEVICE)
-                optimizer.zero_grad()
+                tb_writer.add_scalars(main_tag='loss', tag_scalar_dict={'training':loss.item()}, global_step=step_count)
+                print(f'Epoch [{epoch+1}/{config.model.num_epochs}], Step [{i+1}/{len(train_loader)}], total_loss: {loss.item()}')
                 
         scheduler.step()
 
@@ -312,7 +310,7 @@ def visualize_predictions(config):
     camera_param_dict = {camera_id: CameraParam.from_yaml(Path(config.camera.folder) / f'{camera_id}_calibration.yaml') for camera_id in config.camera.cam_ids}
    
     # training loop
-    model, model_pass, model_autoregr = get_model()
+    model, model_autoregr = get_model()
     state_dict = torch.load( Path(config.model.model_path) / f'model_{config.model.model_name}.pth')
     model.load_state_dict(state_dict)
     model.eval()

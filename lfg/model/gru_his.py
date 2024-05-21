@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 from lfg.util import get_uv_from_3d, compute_stamped_triangulations
 import omegaconf
+from lfg.util import timeit, augment_trajectory, unaugment_trajectory
 
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -23,10 +24,10 @@ class GRUHisModel(nn.Module):
 
     def forward(self, x, h, dt, w0=None):
         '''
-            x: (batch_size, seq_len, input_size): 
-                - input_size: [time_stamp, x,y,z]
+            x: (batch_size, his_len, 4): 
+                - input_size: [B, seq_len, 4 (vx, vy, vz, z)]
         '''
-        x = x.view(-1)
+        x = x.view(x.shape[0], -1)
 
         if w0 is not None:
             h = self.fc01(self.relu(self.fc0(w0)))
@@ -37,33 +38,20 @@ class GRUHisModel(nn.Module):
 
 
         return v_new, h_new
-    
 
 def compute_velocities(stamped_positions):
     '''
-    Compute the velocities from the stamped positions.
-
-    Parameters:
-        stamped_positions (torch.Tensor): A tensor of shape (N, 4) where each row is [t, x, y, z].
-    Returns:
-        torch.Tensor: A tensor of shape (N-1,3) containing [ vx, vy, vz] for each interval.
-    '''
-
-    # Calculate the differences in positions
-    position_differences = stamped_positions[1:, 1:] - stamped_positions[:-1, 1:]
-
-    # Calculate the differences in timestamps
-    time_differences = stamped_positions[1:, 0] - stamped_positions[:-1, 0]
-
-    # Prevent division by zero in case of same timestamp data
+    parameters:
+        stamped_positions: (B, N, 4) where B is batch size, N is sequence length, last axis is [t, x, y, z]
+    '''  
+    position_differences = stamped_positions[:,1:,1:] - stamped_positions[:,:-1,1:]
+    time_differences = stamped_positions[:,1:,0:1] - stamped_positions[:,:-1,0:1]
     time_differences = time_differences.clamp(min=1e-6)
-
-    # Calculate velocities and incorporate timestamps
-    velocities = position_differences / time_differences.unsqueeze(1)
-
+    velocities = position_differences / time_differences
     return velocities
 
-def gruhis_autoregr(model, data, camera_param_dict, fraction_est):
+
+def gruhis_autoregr(model, data, camera_param_dict, fraction_est, aug_batch=30, aug_angle=2*torch.tensor(torch.pi, device=DEVICE)):
     # triangulation first
     for cm in camera_param_dict.values():
         cm.to_numpy()
@@ -72,26 +60,28 @@ def gruhis_autoregr(model, data, camera_param_dict, fraction_est):
     stamped_positions = compute_stamped_triangulations(data.numpy(), camera_param_dict)
     stamped_positions = torch.from_numpy(stamped_positions).float().to(DEVICE)
 
+    # [B, seq_len, 4]
+    augmented_stamped_positions, aug_angles = augment_trajectory(stamped_positions, batch=aug_batch, max_angle=aug_angle, device=DEVICE)
 
-    N = int(stamped_positions.shape[0] * fraction_est)
+
+    N = int(augmented_stamped_positions.shape[1] * fraction_est)
     his_len = model.his_len
 
     # Forward pass
-    w0 = data[0, 6:9].float().to(DEVICE)
+    w0 = data[:aug_batch, 6:9].float().to(DEVICE) # w0 is same across all sequence
     h = None
 
-    t_prev = stamped_positions[0,0]
-    stamped_history = stamped_positions[:his_len,:]
+    t_prev = augmented_stamped_positions[0,0,0]
+    stamped_history = augmented_stamped_positions[:,:his_len,:] # shape is (B, his_len, 4), where 4 is [t, x, y, z]
 
     y = []
 
-    for i in range(stamped_positions.shape[0]):
-        t_curr = stamped_positions[i,0] # current time, step i
-        # x = stamped_positions[i-1,1:] # previous position, step i-1
+    for i in range(augmented_stamped_positions.shape[1]):
+        t_curr = augmented_stamped_positions[0,i,0] # current time, step i
         dt = t_curr - t_prev
 
         if i < his_len:
-            y.append(stamped_positions[i,1:])
+            y.append(augmented_stamped_positions[:,i:i+1,1:])
 
         # predict the position, @ step i
         elif i == his_len:
@@ -99,41 +89,57 @@ def gruhis_autoregr(model, data, camera_param_dict, fraction_est):
             prepare x_input for the model.
             x_input is (1, his_len-1, 4), the last axis is [vx, vy, vz, z]
             '''
-            velocities = compute_velocities(stamped_history)
-            x_input = torch.cat((velocities, stamped_history[1:,3:]), dim=1).unsqueeze(0) # x_input is (1, his_len-1, 4)
-            v, h = model(x_input, h, dt, w0=w0) # x is (3,)
-            x = stamped_history[-1,1:] + v * dt
-            stamped_history = stamped_positions[1:i+1,:]
+            augmented_velocities = compute_velocities(stamped_history)
+            x_input = torch.cat((augmented_velocities, stamped_history[:,1:,3:]), dim=2) # x_input is (B, his_len-1, 4)
+            v, h = model(x_input, h, dt, w0=w0) # v is (B, 3), h is (B, hidden_size)
+            v = v.unsqueeze(1) # v is (B, 1, 3)
+            x = stamped_history[:,-1:,1:] + v * dt
+
+
+            stamped_history = augmented_stamped_positions[:, 1:i+1,:]
             y.append(x)
 
         elif i < N:
-            velocities = compute_velocities(stamped_history)
-            x_input = torch.cat((velocities, stamped_history[1:,3:]), dim=1).unsqueeze(0) # x_input is (1, his_len-1, 4)
-            
+            augmented_velocities = compute_velocities(stamped_history)
+            x_input = torch.cat((augmented_velocities, stamped_history[:,1:,3:]), dim=2) # x_input is (B, his_len-1, 4)
+            # use the last hidden state
             v, h = model(x_input, h, dt)
-            x = stamped_history[-1,1:] + v * dt
-            stamped_history = stamped_positions[i-his_len+1:i+1,:]
+            v = v.unsqueeze(1) # v is (B, 1, 3)
+            x = stamped_history[:,-1:,1:] + v * dt
+
+
+            stamped_history = augmented_stamped_positions[:, i-his_len+1 : i+1, :]
             y.append(x)
 
         else:
-            velocities = compute_velocities(stamped_history)
-            x_input = torch.cat((velocities, stamped_history[1:,3:]), dim=1).unsqueeze(0) # x_input is (1, his_len-1, 4)
+            augmented_velocities = compute_velocities(stamped_history)
+            x_input = torch.cat((augmented_velocities, stamped_history[:,1:,3:]), dim=2) # x_input is (B, his_len-1, 4)
             v, h = model(x_input, h, dt)
-            x = stamped_history[-1,1:] + v.squeeze(0) * dt
-            stamped_x = torch.cat((torch.tensor([t_curr], device=DEVICE), x), dim=0).unsqueeze(0) # shape is (1, 4)
-            stamped_history = torch.cat((stamped_history[1:,:],stamped_x), dim=0) # shape is (his_len, 4)
+            v = v.unsqueeze(1) # v is (B, 1, 3)
+            x = stamped_history[:,-1:,1:] + v * dt # 
+
+            # x is (B, 1, 3), t_curr is scalar
+            t_curr_tensor = torch.full((x.shape[0], 1, 1), t_curr, device=DEVICE) 
+            stamped_x = torch.cat((t_curr_tensor, x), dim=2) # shape is (B, 1, 4)
+
+            stamped_history = torch.cat((stamped_history[:,1:,:],stamped_x), dim=1) # shape is (B, his_len, 4)
             y.append(x)
 
         t_prev = t_curr
-        
+    
 
-    y = torch.stack(y, dim=0) # shape is (seq_len-1, 3)
+    y = torch.cat(y, dim=1) # shape is (B, seq_len, 3)   
+    y = unaugment_trajectory(y, aug_angles) # Note: here input y does not have time axis
 
     # back project to image
     for cm in camera_param_dict.values():
         cm.to_torch(device=DEVICE)
     cam_id_list = [str(int(cam_id)) for cam_id in data[1:, 3]]
-    uv_pred = get_uv_from_3d(y, cam_id_list, camera_param_dict)
-    
-    return uv_pred
+
+    batch_uv_pred = []
+    for yi in y:
+        uv_pred = get_uv_from_3d(yi, cam_id_list, camera_param_dict) # shape is (seq_len, 2)
+        batch_uv_pred.append(uv_pred.unsqueeze(0)) 
+    batch_uv_pred = torch.cat(batch_uv_pred, dim=0) # shape is (B, seq_len, n_cam, 2)
+    return batch_uv_pred
 
