@@ -186,12 +186,10 @@ def get_model(config) -> nn.Module:
 def train_loss(model, model_pass, data, camera_param_dict, criterion):
     data = data[0] # ignore the batch size
 
-    uv_pred = model_pass(model, data, camera_param_dict)
+    y, positions = model_pass(model, data, camera_param_dict)
 
-    N_data = uv_pred.shape[0] # in case of sheduling the data
-    uv_gt = data[1:N_data+1, 4:6].float().to(DEVICE)
 
-    loss = criterion(uv_gt, uv_pred)
+    loss = criterion(y, positions)
    
    
     return loss
@@ -367,31 +365,22 @@ def visualize_predictions(config, data = None, model = None,  model_autoregr = N
 
     # predict
     with torch.no_grad():
-        uv_autoregr = model_autoregr(model, data, camera_param_dict)
+        y, positions = model_autoregr(model, data, camera_param_dict)
 
-    N_data = uv_autoregr.shape[0] # in case of sheduling the data
-    uv_gt = data[1:N_data+1, 4:6].float()
+    y = y.cpu().numpy() 
+    positions = positions.cpu().numpy()
 
     # visualize
-    fig = plt.figure(figsize=(12,4))
-    ax = fig.subplots(1, 3)
-    ax = ax.flatten()
-
-    data = data.cpu().numpy()
-    data = data[1:N_data+1, :]
-    uv_gt = uv_gt.cpu().numpy()
-    uv_autoregr = uv_autoregr.cpu().numpy()
-
-    
-    for ax_id, cam_id in enumerate(camera_param_dict.keys()):
-        ind = np.where(data[1:, 3].astype(int) == int(cam_id))[0]
-        
-        ax[ax_id].scatter(uv_autoregr[ind, 0], uv_autoregr[ind, 1], color='blue',label='Prediction')
-        ax[ax_id].scatter(uv_gt[ind, 0], uv_gt[ind, 1], color='r', label='Ground Truth')
-        ax[ax_id].invert_yaxis()
-        ax[ax_id].set_title(f'Camera {cam_id}\nRecurrent Prediction')
-        ax[ax_id].legend()
-    model.train()
+    fig = plt.figure(figsize=(6,4))
+    ax = fig.add_subplot(projection='3d')
+    ax.plot(positions[:,0], positions[:,1], positions[:,2], label='gt')
+    ax.plot(y[:,0], y[:,1], y[:,2], 'r', label='pred')
+    ax.legend()
+    ax.set_xlabel('X (m)')
+    ax.set_ylabel('Y (m)')
+    ax.set_zlabel('Z (m)')
+    draw_util.set_axes_equal(ax)
+    draw_util.set_axes_pane_white(ax)
     return fig
 
 

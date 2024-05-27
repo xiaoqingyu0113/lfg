@@ -12,4 +12,4 @@ training_data_split: 0.8
 batch_trajectory: 20
 estimation_fraction: 0.15
 
-use_data: 0.35
+use_data: 1.0

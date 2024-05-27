@@ -1,4 +1,0 @@
-- model.continue_training=True
-- model.use_data=0.2
-- model.num_epochs=5
-- model.lr_init=0.01

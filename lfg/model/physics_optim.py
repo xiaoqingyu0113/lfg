@@ -205,12 +205,12 @@ def physics_optim_autoregr(model, data, camera_param_dict, config):
 
 
     # back project to image
-    for cm in camera_param_dict.values():
-        cm.to_torch(device=DEVICE)
-    cam_id_list = [str(int(cam_id)) for cam_id in data[1:, 3]]
-    uv_pred = get_uv_from_3d(y, cam_id_list, camera_param_dict)
+    # for cm in camera_param_dict.values():
+    #     cm.to_torch(device=DEVICE)
+    # cam_id_list = [str(int(cam_id)) for cam_id in data[1:, 3]]
+    # uv_pred = get_uv_from_3d(y, cam_id_list, camera_param_dict)
     
-    return uv_pred
+    return y, stamped_positions[:,1:]
 
 if __name__ == '__main__':
     pass
