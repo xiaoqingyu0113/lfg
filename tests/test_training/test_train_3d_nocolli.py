@@ -29,7 +29,7 @@ def generate_trajectory(visualize = False):
     def euler_int(carry, dt):
        p0, v0 = carry
        p1 = p0 + v0 * dt
-       v1 =  v0 + torch.tensor([0.0,0.0,-9.8])*dt
+       v1 =  v0 + torch.tensor([0.0,0.0,-9.8])*dt + torch.linalg.cross(v0, torch.tensor([0.0,3.0,3.0],device='cpu'))*dt
        return (p1, v1), p1
     N=40
     v0 = torch.tensor([5.0,0.0,0.0])
@@ -154,7 +154,7 @@ def main():
     graph = InvariantFactorGraph()
     model = nn.Linear(3,3)
 
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-2, momentum=0.9)
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-1, momentum=0.9)
     graph, theseus_inputs = inner_loop(graph, model, pN_noisy, t)
     fig= plt.figure()
     ax = fig.add_subplot(projection='3d')
@@ -185,7 +185,7 @@ def main():
         ax.scatter(*pN_opt.T)
         ax.plot(*pN_clean.numpy().T)
         set_axes_equal(ax)
-        plot_to_tensorboard(tb_writer, 'visualze', fig, epoch)
-
+        # plot_to_tensorboard(tb_writer, 'visualze', fig, epoch)
+        fig.savefig('plot.png')
 if __name__ == '__main__':
     main()

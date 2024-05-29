@@ -30,7 +30,7 @@ def compute_norm(x):
 if __name__ == '__main__':
     epoch_num = 1000
     batch_size = 64
-    model = Norm(num_layers=4, hidden_size=128)
+    model = Norm(num_layers=2, hidden_size=128)
     model = model.cuda()  # Move model to GPU
 
     optim = torch.optim.Adam(model.parameters(), lr=1e-2)
