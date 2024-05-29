@@ -176,7 +176,7 @@ def autoregre_error(optim_vars, aux_vars):
 
     # error = pN.reshape(batch,-1) - p_data.tensor[:,3:] # exclude the first position
     error = pN - p_data.tensor.reshape(batch,-1,3)[:,1:,:]
-    return torch.linalg.norm(error,dim=2).mean().reshape(batch,-1)
+    return error.reshape(batch,-1)
 
 
 
@@ -191,7 +191,7 @@ def optimize_params(params, x0, stamped_positions):
     objective = th.Objective()
     objective.add(th.AutoDiffCostFunction([params], 
                                           autoregre_error,
-                                            1, 
+                                            3*(N-1), 
                                             aux_vars=[dt_data, p_data, x0], 
                                             name='errfn_autoregre'))
 
@@ -205,7 +205,7 @@ def optimize_params(params, x0, stamped_positions):
                        'x0': x0.tensor.clone()}
     
     with torch.no_grad():
-        updated_inputs, info = theseus_optim.forward(theseus_inputs,optimizer_kwargs={'verbose':True})
+        updated_inputs, info = theseus_optim.forward(theseus_inputs,optimizer_kwargs={'verbose':False})
         loss = objective.error_metric(updated_inputs)
 
 
@@ -315,7 +315,7 @@ def train_loop(config):
 
             # optim for params
             x0 = th.Vector(tensor=torch.cat([p0, state0], dim=1), name='x0')
-            solution, info, loss = optimize_params(params, x0, stamped_positions[:,N_est-1:,:])
+            solution, info, loss = optimize_params(params, x0, stamped_positions[:,N_est-1::50,:])
             params = th.Vector(tensor = solution['params'] , name='params')
 
             print(loss)
