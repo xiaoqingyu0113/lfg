@@ -349,7 +349,7 @@ class ImageAndPlotViewer:
 
         # save detection file
         pos_to_save = []
-        spin_text = save_filename.split('/')[-1].split('.')[0][:5]
+        spin_text = save_filename.split('/')[-1].split('.')[0][:-6]
         vx, vy, vz = 0, 0, 0 # dummy placeholder
         wx = int(spin_text[1]) if spin_text[0] == 'p' else -int(spin_text[1])
         wy = int(spin_text[4]) if spin_text[3] == 'p' else -int(spin_text[4])
