@@ -165,6 +165,12 @@ class TestModel5(nn.Module):
     def __init__(self):
         super(TestModel5, self).__init__()
         hidden_size= 32
+        self.recode = nn.Sequential(
+            nn.Linear(3, 32),
+            nn.ReLU(),
+            nn.Linear(32, 3)
+            )
+        
         self.layer1 = nn.Sequential(
             nn.Linear(3, hidden_size),
             nn.LeakyReLU()
@@ -190,6 +196,7 @@ class TestModel5(nn.Module):
     def forward(self, v, w, dt):
         v_normalize = v 
         w_normalize = w
+        w_normalize = self.recode(w_normalize)
 
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
