@@ -1,6 +1,7 @@
 import torch
 from torch import nn
 import theseus as th
+import numpy as np 
 
 DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
@@ -12,7 +13,7 @@ class OptimLayer(nn.Module):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-        p_noise = 0.050
+        p_noise = 0.010
         v_noise = 0.001
         w_noise = 0.1
 
@@ -129,6 +130,8 @@ class OptimLayer(nn.Module):
         else:
             with torch.no_grad():
                 sol,info = layer(sol,{'damping': self.damping})
+                if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
+                    return None, None, None
 
         return sol['p0'].unsqueeze(1), sol['v0'].unsqueeze(1), w0.unsqueeze(1)
     

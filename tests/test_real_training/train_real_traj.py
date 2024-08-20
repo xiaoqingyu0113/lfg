@@ -169,6 +169,12 @@ def get_model(cfg):
 
 def compute_loss(model, est, autoregr, data, criterion,cfg):
     pN_est = autoregr(data, model, est, cfg)
+
+    # failed to estimate due to estimator
+    if pN_est is None:
+        return None
+    
+
     pN_gt = data[:, :,2:5]
 
     loss = 0.0
@@ -192,12 +198,16 @@ def compute_loss(model, est, autoregr, data, criterion,cfg):
 def compute_valid_loss(model, est, autoregr, test_loader, criterion, cfg):
     model.eval()  # Set the model to evaluation mode
     total_loss = 0.0
+    num = 0
     with torch.no_grad():  # Disable gradient calculation
         for data in test_loader:
             loss = compute_loss(model, est, autoregr, data, criterion, cfg)
+            if loss is None:
+                continue
+            num +=data.shape[0]
             total_loss += loss.item()* data.shape[0]
     model.train()  # Set the model back to training mode
-    return total_loss / len(test_loader)
+    return total_loss / num
 
 def visualize_traj(model, est, autoregr, data, cfg):
     model.eval()
@@ -247,12 +257,12 @@ def train_loop(cfg):
     # get dataloaders
     train_loader, test_loader = RealTrajectoryDataset.get_dataloaders(cfg)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    train_loader.dataset.dataset.random_plot(ax, range(20))
-    plt.show()
+    #fig = plt.figure()
+    #ax = fig.add_subplot(111, projection='3d')
+    #train_loader.dataset.dataset.random_plot(ax, range(20))
+    #plt.show()
 
-    raise
+    #raise
     
 
     # get summary writer
@@ -294,6 +304,9 @@ def train_loop(cfg):
 
             optimizer.zero_grad()
             loss = compute_loss(model,est, autoregr, data, criterion, cfg)
+            # fail to estimate due to estimator
+            if loss is None:
+                continue
             loss.backward()
                        
 
