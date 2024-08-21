@@ -247,12 +247,12 @@ def train_loop(cfg):
     # get dataloaders
     train_loader, test_loader = RealTrajectoryDataset.get_dataloaders(cfg)
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111, projection='3d')
-    train_loader.dataset.dataset.random_plot(ax, range(20))
-    plt.show()
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # train_loader.dataset.dataset.random_plot(ax, range(20))
+    # plt.show()
 
-    raise
+    # raise
     
 
     # get summary writer
