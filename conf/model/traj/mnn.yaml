@@ -8,6 +8,7 @@ args:
   - none
 kwargs:
   bc_dims: none
+  z0: 0.010
 
 
 # data augmentation  

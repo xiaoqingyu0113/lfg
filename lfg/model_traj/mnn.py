@@ -103,6 +103,13 @@ class BounceModel(nn.Module):
     def __init__(self):
         super(BounceModel, self).__init__()
         hidden_size=32
+
+        self.recode = nn.Sequential(
+            nn.Linear(3, 32),
+            nn.ReLU(),
+            nn.Linear(32, 3)
+            )
+
         self.layer1 = nn.Sequential(
             nn.Linear(6, hidden_size),
             nn.LeakyReLU()
@@ -128,6 +135,7 @@ class BounceModel(nn.Module):
 
         v = v.reshape(batch_size, 3)
         w = w.reshape(batch_size, 3)
+        w = self.recode(w)
 
         R2d, v2d_local, w2d_local = gram_schmidth_2d(v[...,:2], w[...,:2])     
 
@@ -164,6 +172,13 @@ class AeroModel(nn.Module):
     def __init__(self):
         super(AeroModel, self).__init__()
         hidden_size= 32
+
+        self.recode = nn.Sequential(
+            nn.Linear(3, 32),
+            nn.ReLU(),
+            nn.Linear(32, 3)
+            )
+        
         self.layer1 = nn.Sequential(
             nn.Linear(3, hidden_size),
             nn.LeakyReLU()
@@ -195,6 +210,7 @@ class AeroModel(nn.Module):
         batch_size = shapes[0]
         v = v.reshape(batch_size, 3)
         w = w.reshape(batch_size, 3)
+        w = self.recode(w)
 
         v_normalize = v 
         w_normalize = w
@@ -237,7 +253,7 @@ class MNN(nn.Module):
         '''
 
         # check bounce
-        condition1 = b < 0.0
+        condition1 = b < self.z0
         condition2 = v[..., 2:3] < 0.0
         condition = torch.logical_and(condition1, condition2)
 
@@ -267,13 +283,16 @@ def autoregr_MNN(data, model, est, cfg):
     v0 = data[:, 0:1, 5:8]
     w0 = data[:, 0:1, 8:11]
 
-    print(f"p0_gt : {p0[0]}")
+    # print(f"p0_gt : {p0[0]}")
     # print(f"v0_gt : {v0[0]}")
     # print(f"w0_gt : {w0[0]}")
 
     if est is not None:
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
-        print(f"p0_est : {p0[0]}")
+        # failed to estimate
+        if p0 is None:
+            return None
+        # print(f"p0_est : {p0[0]}")
         # print(f"v0_est : {v0[0]}")
         # print(f"w0_est : {w0[0]}")    
 
