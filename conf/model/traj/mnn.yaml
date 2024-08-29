@@ -28,7 +28,7 @@ lr_init: 1e-3
 training_data_split: 0.8
 
 valid_interval: 10 # validation interval in epochs
-continue_training: false
+continue_training: 'new' # 'new' or 'last' or 'run[number]'
 
 # loss
 loss_type: 'pos' # 'vel' or 'pos' or mixed by '+' e.g. 'vel+pos'

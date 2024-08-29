@@ -127,6 +127,8 @@ class OptimLayer(nn.Module):
         layer.to(x.device)
         if self.allow_grad:   
             sol,info = layer(sol, {'damping': self.damping})
+            if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
+                    return None, None, None
         else:
             with torch.no_grad():
                 sol,info = layer(sol,{'damping': self.damping})

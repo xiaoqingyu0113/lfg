@@ -29,6 +29,8 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Using device: {DEVICE}')
 
 
+
+
 def print_cfg(cfg):
     checklist = ['model', 'estimator', 'dataset', 'task']
 
@@ -207,7 +209,7 @@ def compute_valid_loss(model, est, autoregr, test_loader, criterion, cfg):
             num +=data.shape[0]
             total_loss += loss.item()* data.shape[0]
     model.train()  # Set the model back to training mode
-    return total_loss / num
+    return total_loss / num if num != 0 else 1.0 # else large number
 
 def visualize_traj(model, est, autoregr, data, cfg):
     model.eval()
@@ -217,16 +219,17 @@ def visualize_traj(model, est, autoregr, data, cfg):
     ax = fig.add_subplot(111, projection='3d')
     with torch.no_grad():
         pN_est = autoregr(single_data, model, est, cfg)
-        pN_gt = single_data[:, :, 2:5]
-        pN_gt = pN_gt.cpu().numpy()
-        pN_est = pN_est.cpu().numpy()
+        if pN_est is not None:
+            pN_gt = single_data[:, :, 2:5]
+            pN_gt = pN_gt.cpu().numpy()
+            pN_est = pN_est.cpu().numpy()
 
-        for batch in range(single_data.shape[0]):
-            ax.plot(pN_gt[batch, :, 0], pN_gt[batch, :, 1], pN_gt[batch, :, 2], label=f'gt_{batch}')
-            ax.plot(pN_est[batch, :, 0], pN_est[batch, :, 1], pN_est[batch, :, 2], label=f'est_{batch}')
+            for batch in range(single_data.shape[0]):
+                ax.plot(pN_gt[batch, :, 0], pN_gt[batch, :, 1], pN_gt[batch, :, 2], label=f'gt_{batch}')
+                ax.plot(pN_est[batch, :, 0], pN_est[batch, :, 1], pN_est[batch, :, 2], label=f'est_{batch}')
 
-        ax.legend()
-        draw_util.set_axes_equal(ax, zoomin=2.0)
+            ax.legend()
+            draw_util.set_axes_equal(ax, zoomin=2.0)
 
     model.train()
     return fig
@@ -237,11 +240,11 @@ def visualize_traj(model, est, autoregr, data, cfg):
 
 class ParamConstraint:
     def small_param_thresh(model):
-        threshold = 1e-20  # Define a threshold
+        threshold = 1e-32  # Define a threshold
         for name, param in model.named_parameters():
             with torch.no_grad():
-                param.data = torch.where(param.data < -threshold,param.data, torch.tensor(-threshold, dtype=param.data.dtype))
-                param.data = torch.where(param.data > threshold, param.data, torch.tensor(threshold, dtype=param.data.dtype))
+                param.data = torch.where(param.data < -threshold, param.data, torch.tensor(0.0, dtype=param.data.dtype))
+                param.data = torch.where(param.data > threshold, param.data, torch.tensor(0.0, dtype=param.data.dtype))
 
     def positive_param(model):
         for name, param in model.named_parameters():
@@ -251,6 +254,11 @@ class ParamConstraint:
 
 
 def train_loop(cfg):
+
+    # set seed
+    torch.manual_seed(cfg.model.seed)
+    np.random.seed(cfg.model.seed)
+    
 
     print_cfg(cfg)
     
@@ -278,7 +286,7 @@ def train_loop(cfg):
     if cfg.estimator.name != 'GT':
         est.model = model
 
-    if cfg.model.continue_training:
+    if 'new' not in cfg.model.continue_training:
         model_path = Path(tb_writer.get_logdir())/f'model_{cfg.model.name}.pth'
         model.load_state_dict(torch.load(model_path))
         print(f"model loaded from {model_path}")
@@ -317,7 +325,7 @@ def train_loop(cfg):
 
             torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0, norm_type = 2.0, error_if_nonfinite=True)
             optimizer.step()
-            # Constraint.small_param_thresh(model)
+            # ParamConstraint.small_param_thresh(model)
 
             # est params should be positive
             if cfg.estimator.name != 'GT':
@@ -328,6 +336,11 @@ def train_loop(cfg):
             initial_step += 1
             if i % 1 == 0:
                 print(f'epoch: {epoch} iter: {i} training loss: {loss.item()}')
+            
+            if est.allow_grad:
+                print(f"p_weight_param: {est.p_weight_param}")
+                print(f"wv_weight_param: {est.wv_weight_param}")
+                print(f"w0_noise: {est.w0_noise}")
 
 
         if epoch % cfg.model.valid_interval == 0:

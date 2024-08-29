@@ -154,12 +154,13 @@ class TestModel3(nn.Module):
         super(TestModel3, self).__init__()
         hidden_size=32
 
-        self.recode = nn.Sequential(
-            nn.Linear(3, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3)
-            )
-        
+        # self.recode = nn.Sequential(
+        #     nn.Linear(3, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 3)
+        #     )
+        # self.recode = nn.Linear(3,3)
+
         self.layer1 = nn.Sequential(
             nn.Linear(6, hidden_size),
             nn.LeakyReLU()
@@ -177,7 +178,7 @@ class TestModel3(nn.Module):
         
     def forward(self, v, w):
         
-        w = self.recode(w)
+        # w = self.recode(w)
         R2d, v2d_local, w2d_local = gram_schmidth_2d(v[...,:2], w[...,:2])     
         # x = torch.cat([v2d_local[...,:2], v_normalize[...,2:], w2d_local,  w_normalize[...,2:]], dim=-1)
 

@@ -11,7 +11,10 @@ class PhyTune(nn.Module):
 
         # C_d=0.1196, C_m=0.015, mu = 0.22, ez = 0.79
 
-        self._init_random()
+        # self._init_random()
+        self._init_gt()
+
+        self.recode = nn.Linear(3, 3)   
 
         # self.mode_1_linear = nn.Linear(1, 1)
         # self.mode_2_linear = nn.Linear(1, 1)
@@ -128,6 +131,9 @@ class PhyTune(nn.Module):
 
         # check bounce
         # set ground truth bouncing condition
+
+        # w = self.recode(w)
+
         condition1 = b < 0.0
         condition2 = v[..., 2:3] < 0.0
         condition = torch.logical_and(condition1, condition2)
@@ -179,8 +185,12 @@ def autoregr_PhyTune(data, model, est, cfg):
     v0 = data[:, 0:1, 5:8]
     w0 = data[:, 0:1, 8:11]
 
+
+    w0 = model.recode(w0) # launcher to actual spin
+
     if est is not None:
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
+    
     
 
     d_tN = torch.diff(tN, dim=1)

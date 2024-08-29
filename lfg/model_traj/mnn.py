@@ -104,11 +104,14 @@ class BounceModel(nn.Module):
         super(BounceModel, self).__init__()
         hidden_size=32
 
-        self.recode = nn.Sequential(
-            nn.Linear(3, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3)
-            )
+        # self.recode = nn.Sequential(
+        #     nn.Linear(3, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 3)
+        #     )
+        
+        self.recode = nn.Linear(3,3)
+
 
         self.layer1 = nn.Sequential(
             nn.Linear(6, hidden_size),
@@ -173,12 +176,13 @@ class AeroModel(nn.Module):
         super(AeroModel, self).__init__()
         hidden_size= 32
 
-        self.recode = nn.Sequential(
-            nn.Linear(3, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3)
-            )
-        
+        # self.recode = nn.Sequential(
+        #     nn.Linear(3, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 3)
+        #     )
+        self.recode = nn.Linear(3,3)
+
         self.layer1 = nn.Sequential(
             nn.Linear(3, hidden_size),
             nn.LeakyReLU()

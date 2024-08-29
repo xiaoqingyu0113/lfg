@@ -165,12 +165,13 @@ class TestModel5(nn.Module):
     def __init__(self):
         super(TestModel5, self).__init__()
         hidden_size= 32
-        self.recode = nn.Sequential(
-            nn.Linear(3, 32),
-            nn.ReLU(),
-            nn.Linear(32, 3)
-            )
-        
+        # self.recode = nn.Sequential(
+        #     nn.Linear(3, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 3)
+        #     )
+        self.recode = nn.Linear(3,3)
+
         self.layer1 = nn.Sequential(
             nn.Linear(3, hidden_size),
             nn.LeakyReLU()
@@ -282,7 +283,7 @@ def train_loop(task='train'):
         optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
         criterion = nn.L1Loss()
         # criterion = nn.MSELoss()
-        for epoch in range(1000):
+        for epoch in range(300):
             model.train()
             for i, data in enumerate(train_loader):
                 optimizer.zero_grad()

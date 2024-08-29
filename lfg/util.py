@@ -113,10 +113,19 @@ def get_summary_writer_path(config):
         else:
             max_run_num = max(indices)
 
-        if config.model.continue_training:
-            ret_path =logdir / f'run{max_run_num:02d}'    
-        else:
+        if 'run' in config.model.continue_training:
+            ret_path = logdir / config.model.continue_training
+        elif 'last' in config.model.continue_training:
+            ret_path =logdir / f'run{max_run_num:02d}' 
+        elif 'new' in config.model.continue_training:
             ret_path =logdir / f'run{1+max_run_num:02d}'
+        else:
+            raise  ValueError(f'Invalid config.model.continue_training option. Given {config.model.continue_training}, expected one of [run[number], last, new]')
+
+        # if config.model.continue_training:
+        #     ret_path =logdir / f'run{max_run_num:02d}'    
+        # else:
+        #     ret_path =logdir / f'run{1+max_run_num:02d}'
 
     return ret_path
 
@@ -129,7 +138,7 @@ def get_summary_writer(config) -> Tuple[SummaryWriter, int]:
     tb_writer = SummaryWriter(log_dir=run_path)
 
     # update initial step if continue training
-    if config.model.continue_training:
+    if 'new' not in config.model.continue_training:
         loss_dir = run_path/'loss_training'
         loss_dir = list(loss_dir.glob('events.out.tfevents.*'))
         initial_step = max([find_writer_last_step(str(rd)) for rd in loss_dir])
