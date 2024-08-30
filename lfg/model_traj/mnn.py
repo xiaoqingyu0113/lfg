@@ -236,7 +236,7 @@ class AeroModel(nn.Module):
 class MNN(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
-
+        self.z0 = 0.010
         for key, value in kwargs.items():
             setattr(self, key, value)
         self.bc_layer = BounceModel()
