@@ -1,5 +1,5 @@
 # names and directories
-name: MNN
+name: PureMLP
 logdir: "logdir/traj_train/${model.name}/${model.loss_type}/${dataset.name}/${estimator.name}" # logdir/${model_name}/${dataset name}/run{x}/
 
 # model initialization
@@ -12,7 +12,7 @@ kwargs:
 
 
 # data augmentation  
-augment_data: false
+augment_data: true
 add_noise: 5e-3
 
 

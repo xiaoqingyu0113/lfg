@@ -1,5 +1,5 @@
 # names and directories
-name: MNN
+name: Skip
 logdir: "logdir/traj_train/${model.name}/${model.loss_type}/${dataset.name}/${estimator.name}" # logdir/${model_name}/${dataset name}/run{x}/
 
 # model initialization

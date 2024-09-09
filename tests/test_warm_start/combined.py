@@ -78,11 +78,12 @@ def test():
     t = np.linspace(0, 1, 100)
 
     xN = predict_trajectory(p0, v0, w0, t)
-    pN_est = model_trajectory(p0, v0, w0, t)
-    pN_craft = craft_trajectoy(p0, v0, w0, t)
+    print(xN.shape)
+    # pN_est = model_trajectory(p0, v0, w0, t)
+    # pN_craft = craft_trajectoy(p0, v0, w0, t)
     
 
-    save_png(xN, pN_est, pN_craft)
+    # save_png(xN, pN_est, pN_craft)
 
 
 

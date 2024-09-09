@@ -1,0 +1,193 @@
+import torch
+import torch.nn as nn
+
+
+class BounceModel(nn.Module):
+    def __init__(self):
+        super(BounceModel, self).__init__()
+        hidden_size=32
+
+        self.recode = nn.Linear(3,3)
+
+
+        self.layer1 = nn.Sequential(
+            nn.Linear(6, hidden_size),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
+        
+
+        self.dec = nn.Sequential(
+            nn.Linear(hidden_size, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 6)
+        )
+        
+    def forward(self, v, w):
+        '''
+        v, w should be in shape either [b,3] or [b,1,3]
+        '''
+
+        shapes = v.shape
+        batch_size = shapes[0]
+
+        v = v.reshape(batch_size, 3)
+        w = w.reshape(batch_size, 3)
+
+        w = self.recode(w)
+
+        # normalize
+        v_normalize = v / 3.0
+        w_normalize = w / 7.0
+
+        x = torch.cat([v_normalize, w_normalize], dim=-1)
+        h = self.layer1(x)
+        x = self.dec(h)
+
+        # unnormalize
+        v_new = (x[...,:3]*3.0).reshape(shapes)
+        w_new = (x[...,3:]*7.0).reshape(shapes)
+
+        return v_new, w_new  # unnormalize
+    
+class AeroModel(nn.Module):
+    def __init__(self):
+        super(AeroModel, self).__init__()
+        hidden_size= 32
+
+        # self.recode = nn.Sequential(
+        #     nn.Linear(3, 32),
+        #     nn.ReLU(),
+        #     nn.Linear(32, 3)
+        #     )
+        self.is_recode = True
+        self.recode = nn.Linear(3,3)
+
+        self.layer1 = nn.Sequential(
+            nn.Linear(6, hidden_size),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
+
+        self.dec = nn.Sequential(
+            nn.Linear(hidden_size, 128),
+            nn.LeakyReLU(),
+            nn.Linear(128, 3)
+        )
+        
+        self.bias = nn.Parameter(torch.tensor([[0.0, 0.0, -9.81]]))
+
+    def init_weights(self):
+        for m in self.modules():
+            if isinstance(m, nn.Linear):
+                nn.init.normal_(m.weight, mean=0, std=1e-4)
+                nn.init.normal_(m.bias, mean=0, std=1e-4)
+
+    def forward(self, v, w):
+        '''
+        v, w should be in shape either [b,3] or [b,1,3]
+        '''
+
+        shapes = v.shape
+        batch_size = shapes[0]
+        v = v.reshape(batch_size, 3)
+        w = w.reshape(batch_size, 3)
+        w = self.recode(w)
+
+        v_normalize = v 
+        w_normalize = w
+
+
+        feat = torch.cat([v_normalize,w_normalize], dim=-1)
+
+        h = self.layer1(feat)
+        y = self.dec(h)
+     
+        y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
+        y = y.reshape(shapes)
+    
+        return y
+    
+class PureMLP(nn.Module):
+    def __init__(self, *args, **kwargs):
+        super().__init__()
+        self.z0 = 0.010
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+        self.bc_layer = BounceModel()
+        self.aero_layer = AeroModel()
+
+        self.apply(self._init_weights)
+
+
+    def _init_weights(self, m):
+        if type(m) == nn.Linear:
+            torch.nn.init.normal_(m.weight, mean=0.0, std=1e-6)
+            torch.nn.init.normal_(m.bias, mean=0.0, std=1e-6)
+
+    
+    def forward(self, b, v, w, dt):
+        '''
+        input can be [b,3] or [b,1,3]
+        '''
+
+        # check bounce
+        condition1 = b < self.z0
+        condition2 = v[..., 2:3] < 0.0
+        condition = torch.logical_and(condition1, condition2)
+
+        v_bc , w_bc= self.bc_layer(v,w)
+        v =   torch.where(condition, v_bc, v)
+        w =   torch.where(condition, w_bc, w)
+
+        acc = self.aero_layer(v,w)
+
+        v_new = v + acc * dt
+        w_new = w
+        
+        return v_new, w_new
+    
+
+def euler_updator(p, v, dt):
+    return p + v*dt
+
+def autoregr_PureMLP(data, model, est, cfg):
+    '''
+    data = [b, seq_len, 11]
+    11: [traj_idx, time_stamp, p_xyz, v_xyz, w_xyz]
+    '''
+    tN = data[:,:, 1:2]
+    pN = data[:,:, 2:5]
+    
+    w0 = data[:, 0:1, 8:11]
+
+ 
+    if est is not None:
+        p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
+        # failed to estimate from optimizer
+        if p0 is None:
+            return None
+    else:
+        p0 = pN[:, 0:1, :]
+        v0 = data[:, 0:1, 5:8]
+        w0 = data[:, 0:1, 8:11]
+
+
+    d_tN = torch.diff(tN, dim=1)
+    
+    pN_est = [p0]
+    for i in range(1, data.shape[1]):
+        dt = d_tN[:, i-1:i, :]
+        b0 = p0[:,:,2:3]
+        p0 = euler_updator(p0, v0, dt)
+        v0, w0 = model(b0, v0, w0, dt)
+        pN_est.append(p0)
+
+    pN_est = torch.cat(pN_est, dim=1)
+    return pN_est

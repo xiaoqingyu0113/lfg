@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import os
 import sys
+import lfg.model_traj.mlp as mlp
+import lfg.model_traj.mnn as mnn
+import lfg.model_traj.lstm as lstm
+import lfg.model_traj.puremlp as puremlp
+import lfg.model_traj.skip as skip
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -181,17 +186,16 @@ class TestModel5(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
-        # self.layer3 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
 
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
             nn.Linear(128, 3)
         )
-
         
         self.bias = nn.Parameter(torch.tensor([[0.0, 0.0, -9.8]]))
     def init_weights(self):
@@ -210,10 +214,15 @@ class TestModel5(nn.Module):
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
         h0 = self.layer1(feat)
         # h  = self.layer2(h0)*h0  # old
-        h  = self.layer2(h0)*h0 + h0
-        # h = self.layer3(h0)*h + h0
+        # h1  = self.layer2(h0)*h0 + h0
+        # h = self.layer3(h1)*h0 + h1
 
-        y = self.dec(h)
+        h0 = self.layer1(feat)
+        h1 = self.layer2(h0)*h0 + h0
+        h2 = self.layer3(h1)*h0 + h1 # add one more layer
+        y = self.dec(h2)
+
+        # y = self.dec(h)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
      
         y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
@@ -222,7 +231,7 @@ class TestModel5(nn.Module):
     
         return out
     
-def compute_gt(v,w, dt):
+def compute_gt(v,w):
     cd = 0.1123
     cm = 0.015
     # cd = 1.0
@@ -234,8 +243,7 @@ def compute_gt(v,w, dt):
     acc_m = cm * torch.linalg.cross(w, v)
     # acc = g + acc_m + acc_f
     acc = acc_f + acc_m + g
-    v_new = v + acc * dt
-    return v_new
+    return acc
 
 def batch_rotation_matrix(th):
     """
@@ -270,13 +278,15 @@ def euler_update(p, v, dt):
     return p 
 
 def euler_integrate(model, v0, w0, tspan):
+    # v0 = v0[:,None,:]
+    # w0 = w0[:,None,:]
     t = torch.linspace(0, tspan, 100).to(v0.device)
     dt = torch.diff(t, dim=-1).squeeze(-1)
 
     p = torch.zeros_like(v0).to(v0.device)
     p_his = [p]
     for i in range(99):
-        v = model(v0, w0, dt[i])
+        v = model(v0, w0)*dt[i] + v0
         p = euler_update(p, v, dt[i])
         p_his.append(p)
     p_his = torch.stack(p_his, dim=1)
@@ -284,11 +294,23 @@ def euler_integrate(model, v0, w0, tspan):
 
 def train_loop(task='train'):
     train_loader, test_loader = Dataset.get_loader(batch_size=64, shuffle=True)
-    model = TestModel5()
+    # model = TestModel5()
+    model_name = 'Skip'
+    if model_name == 'MLP':
+        model = mlp.AeroModel()
+    elif model_name == 'MNN':
+        model = mnn.AeroModel()
+    elif model_name == 'PureMLP':
+        model = puremlp.AeroModel()
+    elif model_name == 'LSTM':
+        model = lstm.AeroModel()
+    elif model_name == 'Skip':
+        model = skip.AeroModel()
+    
     model.to(device)
 
     if task == 'train':
-        optimizer = torch.optim.Adam(model.parameters(), lr=1e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
+        optimizer = torch.optim.Adam(model.parameters(), lr=5e-3, betas=(0.9, 0.999), eps=1e-8, weight_decay=1e-4)
         criterion = nn.L1Loss()
         # criterion = nn.MSELoss()
         for epoch in range(300):
@@ -333,7 +355,7 @@ def train_loop(task='train'):
 
                 print('--------')
                 
-        torch.save(model.state_dict(), 'data/archive/aero_model.pth')
+        torch.save(model.state_dict(), f'data/archive/{model_name}_aero_model.pth')
 
     if task == 'test':
         model.load_state_dict(torch.load('data/archive/aero_model.pth'))

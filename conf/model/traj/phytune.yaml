@@ -10,7 +10,7 @@ kwargs:
   input_dim: -1
 
 # data augmentation  
-augment_data: true
+augment_data: false
 add_noise: 5e-3
 
 # training

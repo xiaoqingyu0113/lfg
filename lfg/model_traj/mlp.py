@@ -115,16 +115,13 @@ class BounceModel(nn.Module):
 
         self.layer1 = nn.Sequential(
             nn.Linear(6, hidden_size),
-            nn.LeakyReLU()
-        )
-        self.layer2 = nn.Sequential(
+            nn.LeakyReLU(),
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
-        self.layer3 = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
-            nn.LeakyReLU()
-        )
+        
 
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
@@ -155,13 +152,8 @@ class BounceModel(nn.Module):
         w_normalize = w_local / 7.0
 
         x = torch.cat([v_normalize, w_normalize], dim=-1)
-        # x = self.layer1(x)
-        # x = x + self.layer2(x)*x
-        # x = x + self.layer3(x)*x
-        h0 = self.layer1(x)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
-        x = self.dec(h2)
+        h = self.layer1(x)
+        x = self.dec(h)
         # x = self.dec(x)
 
         # unnormalize
@@ -196,13 +188,9 @@ class AeroModel(nn.Module):
 
         self.layer1 = nn.Sequential(
             nn.Linear(3, hidden_size),
-            nn.LeakyReLU()
-        )
-        self.layer2 = nn.Sequential(
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
-            nn.LeakyReLU()
-        )
-        self.layer3 = nn.Sequential(
+            nn.LeakyReLU(),
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
@@ -212,14 +200,15 @@ class AeroModel(nn.Module):
             nn.LeakyReLU(),
             nn.Linear(128, 3)
         )
-
         
         self.bias = nn.Parameter(torch.tensor([[0.0, 0.0, -9.81]]))
+
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
                 nn.init.normal_(m.weight, mean=0, std=1e-4)
                 nn.init.normal_(m.bias, mean=0, std=1e-4)
+
     def forward(self, v, w):
         '''
         v, w should be in shape either [b,3] or [b,1,3]
@@ -237,15 +226,9 @@ class AeroModel(nn.Module):
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
-        # h = self.layer1(feat)
-        # h  = self.layer2(h)*h + h
 
-        h0 = self.layer1(feat)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
-        y = self.dec(h2)
-
-
+        h = self.layer1(feat)
+        y = self.dec(h)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
      
         y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
@@ -253,7 +236,7 @@ class AeroModel(nn.Module):
     
         return y
     
-class MNN(nn.Module):
+class MLP(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.z0 = 0.010
@@ -296,31 +279,28 @@ class MNN(nn.Module):
 def euler_updator(p, v, dt):
     return p + v*dt
 
-def autoregr_MNN(data, model, est, cfg):
+def autoregr_MLP(data, model, est, cfg):
     '''
     data = [b, seq_len, 11]
     11: [traj_idx, time_stamp, p_xyz, v_xyz, w_xyz]
     '''
     tN = data[:,:, 1:2]
     pN = data[:,:, 2:5]
-    p0 = pN[:, 0:1, :]
-    v0 = data[:, 0:1, 5:8]
+    
     w0 = data[:, 0:1, 8:11]
 
-    # print(f"p0_gt : {p0[0]}")
-    # print(f"v0_gt : {v0[0]}")
-    # print(f"w0_gt : {w0[0]}")
-
+ 
     if est is not None:
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
-        # failed to estimate
+        # failed to estimate from optimizer
         if p0 is None:
             return None
-        # print(f"p0_est : {p0[0]}")
-        # print(f"v0_est : {v0[0]}")
-        # print(f"w0_est : {w0[0]}")    
+    else:
+        p0 = pN[:, 0:1, :]
+        v0 = data[:, 0:1, 5:8]
+        w0 = data[:, 0:1, 8:11]
 
-    # raise
+
     d_tN = torch.diff(tN, dim=1)
     
     pN_est = [p0]

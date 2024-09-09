@@ -29,7 +29,26 @@ DEVICE = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 print(f'Using device: {DEVICE}')
 
 
-
+def rotate_along_z(points, angle):
+    """
+    Args:
+    points: Tensor of shape [B, N, 3]
+    angle: Tensor of shape [B]
+    
+    Returns:
+    Rotated points of shape [B, N, 3].
+    """
+    cos_theta = torch.cos(angle)
+    sin_theta = torch.sin(angle)
+    
+    rotation_matrices = torch.stack([
+        torch.stack([cos_theta, -sin_theta, torch.zeros_like(angle)], dim=1),
+        torch.stack([sin_theta, cos_theta, torch.zeros_like(angle)], dim=1),
+        torch.stack([torch.zeros_like(angle), torch.zeros_like(angle), torch.ones_like(angle)], dim=1),
+    ], dim=1)  # shape [B, 3, 3]
+    
+    rotated_points = torch.einsum('bij,bnj->bni', rotation_matrices, points)  # Matrix multiplication
+    return rotated_points
 
 def print_cfg(cfg):
     checklist = ['model', 'estimator', 'dataset', 'task']
@@ -50,7 +69,6 @@ class RealTrajectoryDataset(Dataset):
         self.interpolate = interpolate
         data_np = self.read_all_csv_from_folder(Path(csv_folder))
         self.data = torch.from_numpy(data_np).to(DEVICE).float()
- 
 
     def read_from_cvs(self, cvs_file):
         with open(cvs_file, 'r') as f:
@@ -121,7 +139,7 @@ class RealTrajectoryDataset(Dataset):
             data_got = self.data[i].cpu().numpy()
             ax.plot(data_got[:, 2], data_got[:, 3], data_got[:, 4])
         draw_util.set_axes_equal(ax, zoomin=2.0)
-       
+    
     
     def __len__(self):
         return len(self.data)
@@ -131,7 +149,7 @@ class RealTrajectoryDataset(Dataset):
     
     @classmethod
     def get_dataloaders(cls, config):
-        dataset = cls(Path(config.dataset.folder), config.dataset.interpolate)
+        dataset = cls(Path(config.dataset.folder),interpolate=config.dataset.interpolate)
         total_data_size = len(dataset)
         split_ratio = config.model.training_data_split
         train_data_size = int(total_data_size * split_ratio)
@@ -280,8 +298,11 @@ def train_loop(cfg):
     # get model
     model, est, autoregr = get_model(cfg)
     if cfg.model.warm_start:
-        model.aero_layer.load_state_dict(torch.load('data/archive/aero_model.pth',map_location=DEVICE))
-        model.bc_layer.load_state_dict(torch.load('data/archive/bounce_model.pth',map_location=DEVICE))
+        if cfg.model.name == 'LSTM':
+            model.load_state_dict(torch.load(f'data/archive/{cfg.model.name}_model.pth',map_location=DEVICE))
+        else:
+            model.aero_layer.load_state_dict(torch.load(f'data/archive/{cfg.model.name}_aero_model.pth',map_location=DEVICE))
+            model.bc_layer.load_state_dict(torch.load(f'data/archive/{cfg.model.name}_bounce_model.pth',map_location=DEVICE))
 
     if cfg.estimator.name != 'GT':
         est.model = model
@@ -307,8 +328,18 @@ def train_loop(cfg):
     for epoch in range(cfg.model.num_epochs):
         for i, data in enumerate(train_loader):
             est_size = 0 if cfg.estimator.name == 'GT' else cfg.estimator.kwargs.size
+
+            # use all sequence?
             N_seq = max(int(data.shape[1] * cfg.model.seq_ratio), est_size)
             data = data[:, :N_seq, :] 
+
+            # rotate data
+            if cfg.model.augment_data:
+                angle = torch.rand(data.shape[0], device=DEVICE) * np.pi * 2.0
+                data[:,:,2:5] = rotate_along_z(data[:,:,2:5], angle)
+                data[:,:,5:8] = rotate_along_z(data[:,:,5:8], angle)
+                data[:,:,8:11] = rotate_along_z(data[:,:,8:11], angle)
+
 
             optimizer.zero_grad()
             loss = compute_loss(model,est, autoregr, data, criterion, cfg)

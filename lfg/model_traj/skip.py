@@ -159,8 +159,8 @@ class BounceModel(nn.Module):
         # x = x + self.layer2(x)*x
         # x = x + self.layer3(x)*x
         h0 = self.layer1(x)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
+        h1 = self.layer2(h0) + h0
+        h2 = self.layer3(h1) + h1
         x = self.dec(h2)
         # x = self.dec(x)
 
@@ -237,15 +237,11 @@ class AeroModel(nn.Module):
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
-        # h = self.layer1(feat)
-        # h  = self.layer2(h)*h + h
+        h = self.layer1(feat)
+        h  = self.layer2(h) + h
+        h = self.layer3(h) + h
 
-        h0 = self.layer1(feat)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
-        y = self.dec(h2)
-
-
+        y = self.dec(h)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
      
         y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
@@ -253,7 +249,7 @@ class AeroModel(nn.Module):
     
         return y
     
-class MNN(nn.Module):
+class Skip(nn.Module):
     def __init__(self, *args, **kwargs):
         super().__init__()
         self.z0 = 0.010
@@ -296,7 +292,7 @@ class MNN(nn.Module):
 def euler_updator(p, v, dt):
     return p + v*dt
 
-def autoregr_MNN(data, model, est, cfg):
+def autoregr_Skip(data, model, est, cfg):
     '''
     data = [b, seq_len, 11]
     11: [traj_idx, time_stamp, p_xyz, v_xyz, w_xyz]

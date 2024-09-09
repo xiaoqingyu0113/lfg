@@ -13,8 +13,11 @@ import numpy as np
 from typing import Tuple
 import torch.nn as nn
 
-
-
+import lfg.model_traj.mlp as mlp    
+import lfg.model_traj.mnn as mnn
+import lfg.model_traj.lstm as lstm
+import lfg.model_traj.puremlp as puremlp
+import lfg.model_traj.skip as skip
 
 
 def generate_bounce_data(N: int = 400) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
@@ -197,10 +200,10 @@ class TestModel3(nn.Module):
         w_normalize = w_local / (30.0*np.pi*2)
 
         x0 = torch.cat([v_normalize, w_normalize], dim=-1)
-        x = self.layer1(x0)
-        x = self.layer2(x)*x + x
-        x = self.layer3(x)*x + x # add one more layer
-        x = self.dec(x)
+        h0 = self.layer1(x0)
+        h1 = self.layer2(h0)*h0 + h0
+        h2 = self.layer3(h1)*h0 + h1 # add one more layer
+        x = self.dec(h2)
 
         
         v2d_local_new = x[:, :2] * 3.0
@@ -246,7 +249,19 @@ def test_bounce_training():
     v_new_N = v_new_N.to('cuda')
     w_new_N = w_new_N.to('cuda')
 
-    model = TestModel3()
+    # model = TestModel3()
+    model_name = 'Skip'
+    if model_name == 'MLP':
+        model = mlp.BounceModel()
+    elif model_name == 'MNN':
+        model = mnn.BounceModel()
+    elif model_name == 'PureMLP':
+        model = puremlp.BounceModel()
+    elif model_name == 'LSTM':
+        model = lstm.BounceModel()
+    elif model_name == 'Skip':
+        model = skip.BounceModel()
+
     model = model.to('cuda')
     # model.load_state_dict(torch.load('bounce_model.pth'))
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
@@ -272,7 +287,7 @@ def test_bounce_training():
         print('w_new_N:', w_new_N[i])
         print('-------------------')
 
-    torch.save(model.state_dict(), 'data/archive/bounce_model.pth')
+    torch.save(model.state_dict(), f'data/archive/{model_name}_bounce_model.pth')
 
 
 def compare():

@@ -1,5 +1,5 @@
 # names and directories
-name: MLayer
+name: MLP
 logdir: "logdir/traj_train/${model.name}/${model.loss_type}/${dataset.name}/${estimator.name}" # logdir/${model_name}/${dataset name}/run{x}/
 
 # model initialization
@@ -7,24 +7,29 @@ args:
   - none
   - none
 kwargs:
-  hidden_size: 256
+  bc_dims: none
+  z0: 0.010
+
 
 # data augmentation  
-augment_data: true
-add_noise: 10e-3
+augment_data: false
+add_noise: 5e-3
+
 
 # training
 seed: 42
 num_epochs: 300
+warm_start: true
 
-lr_init: 3e-3
-lr_gamma: 0.95
-lr_step_size: 10
+## lr scheduler
+lr_init: 1e-3
+
 
 training_data_split: 0.8
 
-r_est: none # ratio of data for estimation
 valid_interval: 10 # validation interval in epochs
-continue_training: False
+continue_training: 'new' # 'new' or 'last' or 'run[number]'
 
-loss_type: 'vel' # 'vel' or 'pos' or mixed by '+' e.g. 'vel+pos'
+# loss
+loss_type: 'pos' # 'vel' or 'pos' or mixed by '+' e.g. 'vel+pos'
+seq_ratio: 1.0 # number of point in sequence to be used for loss calculation
