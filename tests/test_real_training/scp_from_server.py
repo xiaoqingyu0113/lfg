@@ -21,7 +21,7 @@ def copy_folder_from_server(server, user, remote_folder_path, local_destination_
 # Example usage
 server = "v-ger.cc.gatech.edu"
 user = "qxiao33"
-remote_path = "~/lfg/logdir/traj_train/MNN/pos/real/OptimLayer/run28"
-local_path = "logdir/traj_train/MNN/pos/real/OptimLayer/"
+remote_path = "~/lfg/logdir/traj_train/PhyTune/pos/real/OptimLayer/run19"
+local_path = "logdir/traj_train/PhyTune/pos/real/OptimLayer/"
 
 copy_folder_from_server(server, user, remote_path, local_path)
