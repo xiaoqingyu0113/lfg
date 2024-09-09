@@ -121,11 +121,15 @@ class BounceModel(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
 
         self.dec = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, 6)
+            nn.Linear(128, 6)
         )
         
     def forward(self, v, w):
@@ -138,6 +142,7 @@ class BounceModel(nn.Module):
 
         v = v.reshape(batch_size, 3)
         w = w.reshape(batch_size, 3)
+        # if self.recode:
         w = self.recode(w)
 
         R2d, v2d_local, w2d_local = gram_schmidth_2d(v[...,:2], w[...,:2])     
@@ -152,6 +157,7 @@ class BounceModel(nn.Module):
         x = torch.cat([v_normalize, w_normalize], dim=-1)
         x = self.layer1(x)
         x = x + self.layer2(x)*x
+        x = x + self.layer3(x)*x
         x = self.dec(x)
 
         # unnormalize
@@ -181,6 +187,7 @@ class AeroModel(nn.Module):
         #     nn.ReLU(),
         #     nn.Linear(32, 3)
         #     )
+        self.is_recode = True
         self.recode = nn.Linear(3,3)
 
         self.layer1 = nn.Sequential(
@@ -191,11 +198,15 @@ class AeroModel(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
 
         self.dec = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, 3)
+            nn.Linear(128, 3)
         )
 
         
@@ -223,7 +234,7 @@ class AeroModel(nn.Module):
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
         h = self.layer1(feat)
-        h  = self.layer2(h)*h
+        h  = self.layer2(h)*h + h
 
         y = self.dec(h)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       

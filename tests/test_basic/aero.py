@@ -170,6 +170,7 @@ class TestModel5(nn.Module):
         #     nn.ReLU(),
         #     nn.Linear(32, 3)
         #     )
+        self.is_recode = True
         self.recode = nn.Linear(3,3)
 
         self.layer1 = nn.Sequential(
@@ -180,11 +181,15 @@ class TestModel5(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+        # self.layer3 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
 
         self.dec = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, 3)
+            nn.Linear(128, 3)
         )
 
         
@@ -197,13 +202,16 @@ class TestModel5(nn.Module):
     def forward(self, v, w, dt):
         v_normalize = v 
         w_normalize = w
-        w_normalize = self.recode(w_normalize)
+        if self.is_recode:
+            w_normalize = self.recode(w_normalize)
 
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
-        h = self.layer1(feat)
-        h  = self.layer2(h)*h
+        h0 = self.layer1(feat)
+        # h  = self.layer2(h0)*h0  # old
+        h  = self.layer2(h0)*h0 + h0
+        # h = self.layer3(h0)*h + h0
 
         y = self.dec(h)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
@@ -315,9 +323,9 @@ def train_loop(task='train'):
                 #     if param.grad is not None:
                 #         print(f"Gradient of {name}: \n{param.grad}")
 
-                for name, param in model.named_parameters():
-                    if 'dec' in name:
-                        print(f"New data of {name}: \n{param.data}")    
+                # for name, param in model.named_parameters():
+                #     if 'dec' in name:
+                #         print(f"New data of {name}: \n{param.data}")    
                     # print(f"New data of {name}: \n{param.data}")
 
                 if i % 1 == 0:

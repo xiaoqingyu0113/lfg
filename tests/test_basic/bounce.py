@@ -159,7 +159,8 @@ class TestModel3(nn.Module):
         #     nn.ReLU(),
         #     nn.Linear(32, 3)
         #     )
-        # self.recode = nn.Linear(3,3)
+        self.is_recode = True
+        self.recode = nn.Linear(3,3)
 
         self.layer1 = nn.Sequential(
             nn.Linear(6, hidden_size),
@@ -169,16 +170,20 @@ class TestModel3(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+        self.layer3 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
 
         self.dec = nn.Sequential(
-            nn.Linear(hidden_size, hidden_size),
+            nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
-            nn.Linear(hidden_size, 6)
+            nn.Linear(128, 6)
         )
         
     def forward(self, v, w):
-        
-        # w = self.recode(w)
+        if self.is_recode:
+            w = self.recode(w)
         R2d, v2d_local, w2d_local = gram_schmidth_2d(v[...,:2], w[...,:2])     
         # x = torch.cat([v2d_local[...,:2], v_normalize[...,2:], w2d_local,  w_normalize[...,2:]], dim=-1)
 
@@ -191,9 +196,10 @@ class TestModel3(nn.Module):
         v_normalize = v_local / 3.0
         w_normalize = w_local / (30.0*np.pi*2)
 
-        x = torch.cat([v_normalize, w_normalize], dim=-1)
-        x = self.layer1(x)
-        x = x + self.layer2(x)*x
+        x0 = torch.cat([v_normalize, w_normalize], dim=-1)
+        x = self.layer1(x0)
+        x = self.layer2(x)*x + x
+        x = self.layer3(x)*x + x # add one more layer
         x = self.dec(x)
 
         
@@ -243,7 +249,7 @@ def test_bounce_training():
     model = TestModel3()
     model = model.to('cuda')
     # model.load_state_dict(torch.load('bounce_model.pth'))
-    optimizer = torch.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
 
     dataset = MyDataset(v_N, w_N, v_new_N, w_new_N)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)

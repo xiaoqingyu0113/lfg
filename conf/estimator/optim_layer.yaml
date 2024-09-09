@@ -6,4 +6,4 @@ kwargs:
   size: 80
   allow_grad: false
   damping: 0.1
-  max_iterations: 20
+  max_iterations: 30
