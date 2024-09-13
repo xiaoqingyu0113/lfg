@@ -182,11 +182,19 @@ class TestModel5(nn.Module):
             nn.Linear(3, hidden_size),
             nn.LeakyReLU()
         )
-        self.layer2 = nn.Sequential(
+        self.layer2_1 = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
-        self.layer3 = nn.Sequential(
+        self.layer2_2 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
+        self.layer3_1 = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size),
+            nn.LeakyReLU()
+        )
+        self.layer3_2 = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
@@ -214,12 +222,12 @@ class TestModel5(nn.Module):
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
         h0 = self.layer1(feat)
         # h  = self.layer2(h0)*h0  # old
-        # h1  = self.layer2(h0)*h0 + h0
-        # h = self.layer3(h1)*h0 + h1
+        h1  = self.layer2(h0)*h0 + h0
+        h2 = self.layer3(h1)*h0 + h1
 
-        h0 = self.layer1(feat)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
+        # h0 = self.layer1(feat)
+        # h1 = self.layer2_2(h0)*h0 + self.layer2_1(h0) + h0
+        # h2 = self.layer3_2(h1)*h0 + self.layer3_1(h1) + h1 # add one more layer
         y = self.dec(h2)
 
         # y = self.dec(h)
@@ -295,7 +303,7 @@ def euler_integrate(model, v0, w0, tspan):
 def train_loop(task='train'):
     train_loader, test_loader = Dataset.get_loader(batch_size=64, shuffle=True)
     # model = TestModel5()
-    model_name = 'Skip'
+    model_name = 'MNN'
     if model_name == 'MLP':
         model = mlp.AeroModel()
     elif model_name == 'MNN':

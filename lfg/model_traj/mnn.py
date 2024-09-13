@@ -121,10 +121,28 @@ class BounceModel(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+
         self.layer3 = nn.Sequential(
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
+        # self.layer2_1 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+        # self.layer2_2 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+
+        # self.layer3_1 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+        # self.layer3_2 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
 
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
@@ -155,15 +173,13 @@ class BounceModel(nn.Module):
         w_normalize = w_local / 7.0
 
         x = torch.cat([v_normalize, w_normalize], dim=-1)
-        # x = self.layer1(x)
-        # x = x + self.layer2(x)*x
-        # x = x + self.layer3(x)*x
         h0 = self.layer1(x)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
-        x = self.dec(h2)
-        # x = self.dec(x)
+        h0 = self.layer2(h0)*h0 + h0
+        h2 = self.layer3(h0)*h0 + h0 # add more layer?
 
+        # h1 = self.layer2_2(h0)*h0 + self.layer2_1(h0) + h0
+        # h2 = self.layer3_2(h1)*h0 + self.layer3_1(h1) + h1 # add one more layer
+        x = self.dec(h2)
         # unnormalize
         v2d_local_new = x[..., :2] * 3.0
         vz_new = x[..., 2:3] * 3.0
@@ -207,6 +223,23 @@ class AeroModel(nn.Module):
             nn.LeakyReLU()
         )
 
+        # self.layer2_1 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+        # self.layer2_2 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+        # self.layer3_1 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+        # self.layer3_2 = nn.Sequential(
+        #     nn.Linear(hidden_size, hidden_size),
+        #     nn.LeakyReLU()
+        # )
+
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
@@ -237,16 +270,17 @@ class AeroModel(nn.Module):
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
-        # h = self.layer1(feat)
-        # h  = self.layer2(h)*h + h
-
-        h0 = self.layer1(feat)
-        h1 = self.layer2(h0)*h0 + h0
-        h2 = self.layer3(h1)*h0 + h1 # add one more layer
+        h = self.layer1(feat)
+        h2  = self.layer2(h)*h + h
+        # h2 = self.layer3(h)*h + h # add more layer?
+        # h0 = self.layer1(feat)
+        # h1 = self.layer2_2(h0)*h0 + self.layer2_1(h0) + h0
+        # h2 = self.layer3_2(h1)*h0 + self.layer3_1(h1) + h1 # add one more layer
         y = self.dec(h2)
 
-
+        # y = self.dec(h2)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
+
      
         y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
         y = y.reshape(shapes)

@@ -116,7 +116,7 @@ def draw_pinpong_table_outline(ax,z0 = 0.0):
     rects = dict()
     m_per_ft = 0.3048
 
-    origin_offset = np.array([-1.2, 1.2, 0.0]) 
+    origin_offset = np.array([-0.900, 1.2, 0.0]) 
     rects['1'] = (np.array([5.0, 0.0, z0]),np.array([2.5,-4.5, z0]) )
     rects['2'] = (np.array([5.0, -9.0, z0]),np.array([2.5,-4.5, z0]) )
     rects['3'] = (np.array([0.0, 0.0, z0]),np.array([2.5,-4.5, z0]) )

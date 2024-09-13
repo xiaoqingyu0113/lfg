@@ -135,7 +135,9 @@ class OptimLayer(nn.Module):
                 if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
                     return None, None, None
 
-        return sol['p0'].unsqueeze(1), sol['v0'].unsqueeze(1), w0.unsqueeze(1)
+        return sol['p0'].unsqueeze(1), sol['v0'].unsqueeze(1), w0.unsqueeze(1) 
+        # return sol[f'p{self.size-1}'].unsqueeze(1), sol[f'v{self.size-1}'].unsqueeze(1), sol['w0'].unsqueeze(1) # temporary, compare with ekf
+
     
 
 

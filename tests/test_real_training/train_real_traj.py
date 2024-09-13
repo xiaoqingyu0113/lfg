@@ -150,6 +150,8 @@ class RealTrajectoryDataset(Dataset):
     @classmethod
     def get_dataloaders(cls, config):
         dataset = cls(Path(config.dataset.folder),interpolate=config.dataset.interpolate)
+        print(f"Loaded dataset with {len(dataset)} samples.")
+
         total_data_size = len(dataset)
         split_ratio = config.model.training_data_split
         train_data_size = int(total_data_size * split_ratio)

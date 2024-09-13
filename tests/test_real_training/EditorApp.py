@@ -436,6 +436,14 @@ class ImageAndPlotViewer:
             # set view angle
             self.ax.view_init(elev=30, azim=165)
 
+            # axis fill color to white
+            self.ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color (RGBA format)
+            self.ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color
+            self.ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color
+            self.ax.set_xlabel('X (m)')
+            self.ax.set_ylabel('Y (m)')
+            self.ax.set_zlabel('Z (m)')    
+
             
         # Embed the plot in the Tkinter window
         if self.canvas:

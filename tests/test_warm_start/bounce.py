@@ -250,7 +250,7 @@ def test_bounce_training():
     w_new_N = w_new_N.to('cuda')
 
     # model = TestModel3()
-    model_name = 'Skip'
+    model_name = 'MNN'
     if model_name == 'MLP':
         model = mlp.BounceModel()
     elif model_name == 'MNN':
@@ -269,7 +269,7 @@ def test_bounce_training():
     dataset = MyDataset(v_N, w_N, v_new_N, w_new_N)
     dataloader = torch.utils.data.DataLoader(dataset, batch_size=32, shuffle=True)
     criterion = nn.L1Loss()
-    for epoch in range(500):
+    for epoch in range(300):
         for v_N, w_N, v_new_N, w_new_N in dataloader: 
             optimizer.zero_grad()
             v_new_pred, w_new_pred = model(v_N, w_N)
