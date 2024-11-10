@@ -344,9 +344,12 @@ def autoregr_MNN(data, model, est, cfg):
     # print(f"p0_gt : {p0[0]}")
     # print(f"v0_gt : {v0[0]}")
     # print(f"w0_gt : {w0[0]}")
+    import time
 
     if est is not None:
+        time_start = time.time()
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
+        print('inference',time.time() - time_start)
         # failed to estimate
         if p0 is None:
             return None
@@ -356,7 +359,7 @@ def autoregr_MNN(data, model, est, cfg):
 
     # raise
     d_tN = torch.diff(tN, dim=1)
-    
+    time_start = time.time()
     pN_est = [p0]
     for i in range(1, data.shape[1]):
         dt = d_tN[:, i-1:i, :]
@@ -366,4 +369,5 @@ def autoregr_MNN(data, model, est, cfg):
         pN_est.append(p0)
 
     pN_est = torch.cat(pN_est, dim=1)
+    print('regress',time.time() - time_start)
     return pN_est

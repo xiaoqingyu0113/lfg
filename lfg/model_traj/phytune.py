@@ -134,7 +134,7 @@ class PhyTune(nn.Module):
 
         # w = self.recode(w)
 
-        condition1 = b < 0.0
+        condition1 = b < 0.010
         condition2 = v[..., 2:3] < 0.0
         condition = torch.logical_and(condition1, condition2)
         # print(torch.any(condition))

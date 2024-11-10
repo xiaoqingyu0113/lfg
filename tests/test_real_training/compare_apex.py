@@ -53,12 +53,12 @@ def peek(cfg):
 
     # load mnn
     mnn = MNN(z0=0.010)
-    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run28/model_MNN.pth'))
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/model_MNN.pth'))
     mnn.eval()
     mnn.to('cuda')
 
     mnn_est = OptimLayer(mnn, size=80, allow_grad=False, damping=0.1, max_iterations=20)
-    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run28/est_OptimLayer.pth'))
+    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/est_OptimLayer.pth'))
     mnn_est.eval()
     mnn_est.to('cuda')
     mnn_est.model = mnn
@@ -76,21 +76,34 @@ def peek(cfg):
     phy_est.model = phy
 
     iter_loader = iter(test_loader)
-    data = next(iter_loader)
-    data = next(iter_loader)
-    data = next(iter_loader)
+    # data = next(iter_loader)
+    # data = next(iter_loader)
+    # data = next(iter_loader)
 
-    s_idx = 3
-    e_idx = 4
-    data = data[s_idx:e_idx] # choose some samples
-    with torch.no_grad():
-        pN_mnn = autoregr_MNN(data, mnn, mnn_est, cfg)
-        pN_phy = autoregr_PhyTune(data, phy, phy_est, cfg)
+    # s_idx = 0
+    # e_idx = 1
+    # data = data[s_idx:e_idx] # choose some samples
+    while True:
+        data = next(iter_loader)
+        exit_loop = False  # Flag to control the outer loop
+        for data_i in data:
+            data_i = data_i.cpu().numpy()
+            bounce_indices = find_bounce_points(data_i[None,...])
+            print(len(bounce_indices[0]))
+            if len(bounce_indices[0]) == 3:
+                exit_loop = True  # Set flag to break outer loop
+                break  # Break the inner for loop
+        if exit_loop:
+            break  # Break the outer while loop
+
+    # with torch.no_grad():
+    #     pN_mnn = autoregr_MNN(data, mnn, mnn_est, cfg)
+    #     pN_phy = autoregr_PhyTune(data, phy, phy_est, cfg)
     # pN_mnn = pN_mnn.cpu().numpy()
     # pN_phy = pN_phy.cpu().numpy()
 
-    data = data.cpu().numpy()
-    bounce_indices = find_bounce_points(data)
+    # data = data.cpu().numpy()
+    bounce_indices = find_bounce_points(data_i[None,...])
 
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -99,13 +112,19 @@ def peek(cfg):
             ax.plot(pN_mnn[i, :, 0], pN_mnn[i, :, 1], pN_mnn[i, :, 2], label='MNN (ours)')
         if 'pN_phy' in locals():
             ax.plot(pN_phy[i, :, 0], pN_phy[i, :, 1], pN_phy[i, :, 2], label='PhyTune')
-        ax.plot(data[i, :, 2], data[i, :, 3], data[i, :, 4], label='GT')
-        for idx in bounce_indices[i]:
-            ax.scatter(data[i, idx, 2], data[i, idx, 3], data[i, idx, 4], c='r', s=10)
+
+    ax.plot(data_i[:, 2], data_i[:, 3], data_i[:, 4],marker='.', label='GT')
+    for idx in bounce_indices[0]:
+        # ax.scatter(data[i, idx, 2], data[i, idx, 3], data[i, idx, 4], c='r', s=10)
+        # ax.scatter(data_i[idx, 2], data_i[idx, 3], data_i[idx, 4], c = 'r', s=10, label='Bounce')
+        continue
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
+    ax.xaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color (RGBA format)
+    ax.yaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color
+    ax.zaxis.set_pane_color((1.0, 1.0, 1.0, 1.0))  # White color
     ax.legend()
     draw_util.set_axes_equal(ax)
     draw_util.draw_pinpong_table_outline(ax)
@@ -269,9 +288,9 @@ def print_apex_loss(apex_loss):
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
     # apex_loss(cfg) 
-    loop_apex_loss(cfg)
-    print_apex_loss(cfg)
-    # peek(cfg)
+    # loop_apex_loss(cfg)
+    # print_apex_loss(cfg)
+    peek(cfg)
 
 
 if __name__ == "__main__":

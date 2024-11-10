@@ -16,7 +16,7 @@ from lfg.model_traj.puremlp import PureMLP
 from lfg.model_traj.phytune import PhyTune, autoregr_PhyTune
 from lfg.estimator import OptimLayer
 from draw_util import draw_util
-
+import time
 np.random.seed(42)
 torch.manual_seed(42)
 
@@ -50,12 +50,14 @@ def show_roto_translational():
         w0 = torch.matmul(w0, R)
         with torch.no_grad():
             pN_est = [p0]
+            t_start = time.time()
             for i in range(1, 150):
                 b0 = p0[:,:,2:3]
                 p0 = p0 + v0* dt
                 v0, w0 = mnn(b0, v0, w0, dt)
                 pN_est.append(p0)
             pN_est = torch.cat(pN_est, dim=1)
+            print('Time taken:', time.time() - t_start)
         pN_est = pN_est.cpu().numpy()
         ax.plot(pN_est[0, :, 0], pN_est[0, :, 1], pN_est[0, :, 2], label='MNN (ours)', linewidth=2)
 
@@ -70,6 +72,7 @@ def show_roto_translational():
                             [0, 0, 1]], dtype=torch.float32).to('cuda')
         v0 = torch.matmul(v0, R)
         w0 = torch.matmul(w0, R)
+        
         with torch.no_grad():
             pN_est = [p0]
             for i in range(1, 150):
@@ -107,20 +110,21 @@ def compute_trajectory(model, p0, v0, w0, dt, th):
                         [0, 0, 1]], dtype=torch.float32).to('cuda')
     v0 = torch.matmul(v0, R)
     w0 = torch.matmul(w0, R)
-
+    t_start = time.time()   
     with torch.no_grad():
         pN_est = [p0]
-        for i in range(1, 150):
+        for i in range(1, 100):
             b0 = p0[:,:,2:3]
             p0 = p0 + v0* dt
             v0, w0 = model(b0, v0, w0, dt)
             pN_est.append(p0)
         pN_est = torch.cat(pN_est, dim=1)
+        print('Time taken:', time.time() - t_start)
     return pN_est, R
 
 def compute_roto_trans_error():
 
-    model_name = 'MLP+GS'
+    model_name = 'MLP+Aug'
 
     if model_name == 'MLP+GS':
         model = MLP()
@@ -134,10 +138,12 @@ def compute_roto_trans_error():
 
     p0 = torch.tensor([[[0.5, -3.0, 0.100]]], dtype=torch.float32).to('cuda')
     v0 = torch.tensor([[[2.0, 0.0, 1.0]]], dtype=torch.float32).to('cuda')
-    w0 = torch.tensor([[[5.0, 3.0, 0.0]]], dtype=torch.float32).to('cuda')
+    w0 = torch.tensor([[[-5.0, 3.0, 0.0]]], dtype=torch.float32).to('cuda')
     dt = torch.tensor([[[0.01]]], dtype=torch.float32).to('cuda')
 
     loss = nn.MSELoss()
+
+    model.compile()
     pN_est, R = compute_trajectory(model, p0, v0, w0, dt, 0)
 
     total_loss = []

@@ -56,6 +56,47 @@ def read_camera_param(i):
     camera_param = CameraParam.from_yaml(f'conf/camera/{serial}_calibration.yaml')
     return camera_param
 
+
+
+def plot_single(cfg):
+    np.random.seed(42)
+    torch.manual_seed(42)
+    train_loader, test_loader = RealTrajectoryDataset.get_dataloaders(cfg)
+    model, estimator = load_model('MNN+GS (ours)')
+    bg_image= read_bg_image(1)
+    camera_param = read_camera_param(1)
+
+
+    # Prepare the figure
+    fig = plt.figure(figsize=(10, 8.44))
+    ax = fig.add_subplot(111)
+
+    data = next(iter(test_loader))
+    data = next(iter(test_loader))
+
+    with torch.no_grad():
+        pN_est = autoregr_MNN(data, model, estimator, cfg)
+    pN_est = pN_est.cpu().numpy()
+    pN_gt = data[:, :, 2:5].cpu().numpy()
+    choices = [2] # pick some good ones for presentation purposes only
+    for i in choices:
+        pN_gt_i = pN_gt[i]
+        pN_est_i = pN_est[i]
+        topspin = int(data[i,0,8].cpu().item())
+        sidespin = int(data[i,0,9].cpu().item())
+        gt_image = camera_param.proj2img(pN_gt_i)
+        est_image = camera_param.proj2img(pN_est_i)
+        ax.scatter(gt_image[:, 0], gt_image[:, 1], label=f'GT TS={topspin} SS={sidespin}', s=1)
+        # ax.plot(est_image[:, 0], est_image[:, 1], label='Prediction', linewidth=2)
+
+    ax.imshow(bg_image)
+    # ax.legend(loc='lower left')
+    # ax.legend(fontsize=15)
+    plt.tight_layout()
+    ax.set_xticks([])
+    ax.set_yticks([])
+    plt.show()
+
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def run(cfg):
     np.random.seed(42)
@@ -75,7 +116,7 @@ def run(cfg):
         pN_est = autoregr_MNN(data, model, estimator, cfg)
     pN_est = pN_est.cpu().numpy()
     pN_gt = data[:, :, 2:5].cpu().numpy()
-    choices = [1, 2,  30] # pick some good ones for presentation purposes only
+    choices = [1,  30] # pick some good ones for presentation purposes only
     for i in choices:
         pN_gt_i = pN_gt[i]
         pN_est_i = pN_est[i]
@@ -108,19 +149,80 @@ def run(cfg):
     ax.legend(loc='lower left')
     ax.legend(fontsize=15)
 
-    
-
-
-
-
     # layout tight, don't show x and y ticks, increase the font in the legend
     plt.tight_layout()
     ax.set_xticks([])
     ax.set_yticks([])
 
-    
     plt.show()
 
+@hydra.main(version_base=None, config_path='../../conf', config_name='config')
+def animation(cfg):
+    from matplotlib.animation import FuncAnimation
+
+    np.random.seed(42)
+    torch.manual_seed(42)
+    train_loader, test_loader = RealTrajectoryDataset.get_dataloaders(cfg)
+    model, estimator = load_model('MNN+GS (ours)')
+    bg_image = read_bg_image(1)
+    camera_param = read_camera_param(1)
+
+    # Prepare the figure
+    fig, ax = plt.subplots(1,2, figsize=(20, 8.44))
+
+    # Pick a sample from the test data
+    data = next(iter(test_loader))
+    with torch.no_grad():
+        pN_est = autoregr_MNN(data, model, estimator, cfg)
+
+    pN_est = pN_est.cpu().numpy()
+    pN_gt = data[:, :, 2:5].cpu().numpy()
+
+    # Choose a trajectory to plot
+    i = 1  # You can change this index to another sample for different plots
+    pN_est_i = pN_est[i]
+    pN_gt_i = pN_gt[i]
+    gt_image = camera_param.proj2img(pN_gt_i)
+    est_image = camera_param.proj2img(pN_est_i)
+
+    topspin = int(data[i, 0, 8].cpu().item())
+    sidespin = int(data[i, 0, 9].cpu().item())
+
+    # Set up the plot background
+    ax.imshow(bg_image)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    # Ground Truth Trajectory (static)
+    ax.scatter(gt_image[:, 0], gt_image[:, 1], label=f'GT TS={topspin} SS={sidespin}', s=1)
+
+    # Empty plot for the animated comet
+    comet_line, = ax.plot([], [], 'r-', linewidth=2, label='Prediction (Comet)')
+    comet_head, = ax.plot([], [], 'ro')  # Head of the comet
+
+    # Initialize function for animation
+    def init():
+        comet_line.set_data([], [])
+        comet_head.set_data([], [])
+        return comet_line, comet_head
+
+    # Update function for the animation
+    def update(frame):
+        # Update the comet tail (the path so far) and head (current point)
+        comet_line.set_data(est_image[:frame, 0], est_image[:frame, 1])
+        comet_head.set_data(est_image[frame-1, 0], est_image[frame-1, 1])
+        return comet_line, comet_head
+
+    # Create the animation (number of frames equal to the number of points in the trajectory)
+    ani = FuncAnimation(fig, update, frames=len(est_image), init_func=init, blit=True, interval=100)
+
+    # Legend and layout adjustments
+    ax.legend(loc='lower left', fontsize=15)
+    plt.tight_layout()
+
+    # Show the animation
+    plt.show()
 
 if __name__ == '__main__':
-    run()  # Call the run function to execute the code
+    # run()  # Call the run function to execute the code
+    animation()  # Call the animation function to execute the code

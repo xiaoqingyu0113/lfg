@@ -51,7 +51,7 @@ def compare_loss():
                 'MLP+Aug.': 'logdir/traj_train/PureMLP/pos/real/OptimLayer/run03',
                 'MLP+GS (ours)':'logdir/traj_train/MLP/pos/real/OptimLayer/run02',
                 'Skip+GS. (ours)': 'logdir/traj_train/Skip/pos/real/OptimLayer/run00',
-                'MNN+GS (ours)': 'logdir/traj_train/MNN/pos/real/OptimLayer/run45',
+                'MNN+GS (ours)': 'logdir/traj_train/MNN/pos/real/OptimLayer/run44',
                 } 
 
     # Setting up a seaborn style

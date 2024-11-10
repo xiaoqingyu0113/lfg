@@ -3,6 +3,7 @@ import tkinter as tk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import matplotlib.pyplot as plt
 from pycamera import triangulate, CameraParam, set_axes_equal
+from draw_util import draw_util
 
 class DatasetViewer:
     def __init__(self, master):
@@ -64,6 +65,7 @@ class DatasetViewer:
             ax.scatter(trajectory[:N,2], trajectory[:N,3], trajectory[:N,4])
 
         set_axes_equal(ax)
+        draw_util.draw_pinpong_table_outline(ax)
         self.canvas.draw()
 
 
