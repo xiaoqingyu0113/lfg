@@ -104,12 +104,6 @@ class BounceModel(nn.Module):
         super(BounceModel, self).__init__()
         hidden_size=32
 
-        # self.recode = nn.Sequential(
-        #     nn.Linear(3, 32),
-        #     nn.ReLU(),
-        #     nn.Linear(32, 3)
-        #     )
-        
         self.recode = nn.Linear(3,3)
 
 
@@ -126,23 +120,6 @@ class BounceModel(nn.Module):
             nn.Linear(hidden_size, hidden_size),
             nn.LeakyReLU()
         )
-        # self.layer2_1 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-        # self.layer2_2 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-
-        # self.layer3_1 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-        # self.layer3_2 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
 
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
@@ -177,8 +154,6 @@ class BounceModel(nn.Module):
         h0 = self.layer2(h0)*h0 + h0
         h2 = self.layer3(h0)*h0 + h0 # add more layer?
 
-        # h1 = self.layer2_2(h0)*h0 + self.layer2_1(h0) + h0
-        # h2 = self.layer3_2(h1)*h0 + self.layer3_1(h1) + h1 # add one more layer
         x = self.dec(h2)
         # unnormalize
         v2d_local_new = x[..., :2] * 3.0
@@ -202,11 +177,7 @@ class AeroModel(nn.Module):
         super(AeroModel, self).__init__()
         hidden_size= 32
 
-        # self.recode = nn.Sequential(
-        #     nn.Linear(3, 32),
-        #     nn.ReLU(),
-        #     nn.Linear(32, 3)
-        #     )
+    
         self.is_recode = True
         self.recode = nn.Linear(3,3)
 
@@ -223,23 +194,6 @@ class AeroModel(nn.Module):
             nn.LeakyReLU()
         )
 
-        # self.layer2_1 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-        # self.layer2_2 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-        # self.layer3_1 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-        # self.layer3_2 = nn.Sequential(
-        #     nn.Linear(hidden_size, hidden_size),
-        #     nn.LeakyReLU()
-        # )
-
         self.dec = nn.Sequential(
             nn.Linear(hidden_size, 128),
             nn.LeakyReLU(),
@@ -248,6 +202,7 @@ class AeroModel(nn.Module):
 
         
         self.bias = nn.Parameter(torch.tensor([[0.0, 0.0, -9.81]]))
+
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Linear):
@@ -272,13 +227,7 @@ class AeroModel(nn.Module):
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
         h = self.layer1(feat)
         h2  = self.layer2(h)*h + h
-        # h2 = self.layer3(h)*h + h # add more layer?
-        # h0 = self.layer1(feat)
-        # h1 = self.layer2_2(h0)*h0 + self.layer2_1(h0) + h0
-        # h2 = self.layer3_2(h1)*h0 + self.layer3_1(h1) + h1 # add one more layer
         y = self.dec(h2)
-
-        # y = self.dec(h2)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
 
      
@@ -341,9 +290,7 @@ def autoregr_MNN(data, model, est, cfg):
     v0 = data[:, 0:1, 5:8]
     w0 = data[:, 0:1, 8:11]
 
-    # print(f"p0_gt : {p0[0]}")
-    # print(f"v0_gt : {v0[0]}")
-    # print(f"w0_gt : {w0[0]}")
+
     import time
 
     if est is not None:
@@ -353,9 +300,7 @@ def autoregr_MNN(data, model, est, cfg):
         # failed to estimate
         if p0 is None:
             return None
-        # print(f"p0_est : {p0[0]}")
-        # print(f"v0_est : {v0[0]}")
-        # print(f"w0_est : {w0[0]}")    
+
 
     # raise
     d_tN = torch.diff(tN, dim=1)
