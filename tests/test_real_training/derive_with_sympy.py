@@ -1,19 +1,11 @@
 import sympy as sp
+import inspect
 
-# Define matrices and biases
-recode_weight = sp.MatrixSymbol('recode_weight', 3, 3)
-recode_bias = sp.MatrixSymbol('recode_bias', 3, 1)
-layer1_weight = sp.MatrixSymbol('layer1_weight', 32, 3)
-layer1_bias = sp.MatrixSymbol('layer1_bias', 32, 1)
-layer2_weight = sp.MatrixSymbol('layer2_weight', 32, 32)
-layer2_bias = sp.MatrixSymbol('layer2_bias', 32, 1)
-dec_0_weight = sp.MatrixSymbol('dec_0_weight', 128, 32)
-dec_0_bias = sp.MatrixSymbol('dec_0_bias', 128, 1)
-dec_2_weight = sp.MatrixSymbol('dec_2_weight', 3, 128)
-dec_2_bias = sp.MatrixSymbol('dec_2_bias', 3, 1)
-bias = sp.MatrixSymbol('bias', 3, 1)
-v = sp.Matrix(sp.MatrixSymbol('v', 3, 1))  # Convert to Matrix for operations
-w = sp.Matrix(sp.MatrixSymbol('w', 3, 1))  # Convert to Matrix for operations
+# Define symbols for inputs
+v1, v2, v3 = sp.symbols('v1 v2 v3')
+w1, w2, w3 = sp.symbols('w1 w2 w3')
+v = sp.Matrix([v1, v2, v3])
+w = sp.Matrix([w1, w2, w3])
 
 def gs(v, w):
     # Normalize v
@@ -36,31 +28,31 @@ def gs(v, w):
     v_local = R.T * v
     w_local = R.T * w
 
-    return R, v_local, w_local
+    # return R, v_local, w_local
 
-# Perform the matrix multiplication and add recode_bias
-w_transformed = sp.Matrix(recode_weight) * w + sp.Matrix(recode_bias)
+    # Stack R, v_local, and w_local into a single vector
+    stacked_output = sp.Matrix.vstack(R.reshape(9, 1), v_local, w_local)
+    
+    return stacked_output
 
-# Call the gs function
-R, v_local, w_local = gs(v, w_transformed)
+# Get outputs from gs function
+stacked_output = gs(v, w)
 
-# Calculate the feature vector
-feat = sp.Matrix([[v_local[0]], [w_local[0]], [w_local[1]]])
+# Compute the Jacobian of R, v_local, w_local with respect to v and w
+# Flatten R to make it easier to compute the Jacobian
 
-# Calculate the hidden layer activations
-
-h = sp.Matrix(layer1_weight * feat + layer1_bias)
-
-h.applyfunc(lambda x: sp.Piecewise((x, x > 0), (0, True)))
-h2 = sp.Matrix(layer2_weight * h + layer2_bias)
-h2.applyfunc(lambda x: sp.Piecewise((x, x > 0), (0, True)))
-h2 = h2.multiply_elementwise(h) + h
+# Compute Jacobians
+J_R_v = stacked_output.jacobian([v1,v2,v3,w1,w2,w3])   # Jacobian of R with respect to v
+print(J_R_v.shape)
+# lambdify the Jacob
+J_R_v = sp.lambdify((v,w), J_R_v, 'numpy')
+J_code = inspect.getsource(J_R_v)
 
 
-# Calculate the output+
-y = dec_0_weight * h2 + dec_0_bias
-# y.applyfunc(lambda x: sp.Piecewise((x, x > 0), (0, True)))
-y = dec_2_weight * y + dec_2_bias
-y = R * y
-y = y + sp.Matrix(bias)
+filename = 'lfg/derive.py'
+with open(filename, 'w') as f:
+    f.write('from numpy import array\n')
 
+with open(filename, 'a') as f:
+    J_code = J_code.replace('_lambdifygenerated', 'dJ')
+    f.write(J_code)

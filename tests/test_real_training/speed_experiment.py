@@ -5,6 +5,8 @@ from omegaconf import OmegaConf
 import hydra
 import torch
 import torch.nn as nn
+import torch.autograd.functional as F
+
 import matplotlib.pyplot as plt
 import numpy as np
 import torch_tensorrt
@@ -147,22 +149,76 @@ global_dec_2_bias = global_aero_params['dec.2.bias']
 global_bias = global_aero_params['bias']
 
 
+# @numba.jit(nopython=True)
+# def aero_forward_global_jitted(v,w):
+#     w = w @ global_recode_weight.T + global_recode_bias
+#     R, v_local, w_local = gs(v, w)     
+#     feat = np.array([v_local[0], w_local[0], w_local[1]])
+#     h = np.maximum(0, feat @ global_layer1_weight.T + global_layer1_bias)
+#     h2 = np.maximum(h @ global_layer2_weight.T + global_layer2_bias, 0) * h + h
+#     y = np.maximum(h2 @ global_dec_0_weight.T + global_dec_0_bias, 0)
+#     y = y @ global_dec_2_weight.T + global_dec_2_bias
+#     y = R@y
+#     y = y + global_bias.reshape(-1) 
+#     return y
+    
 @numba.jit(nopython=True)
 def aero_forward_global_jitted(v,w):
-    w = w @ global_recode_weight.T + global_recode_bias
+    return aero_forward_jitted(global_recode_weight, global_recode_bias,
+                                global_layer1_weight, global_layer1_bias,
+                                global_layer2_weight, global_layer2_bias,
+                                global_dec_0_weight, global_dec_0_bias,
+                                global_dec_2_weight, global_dec_2_bias,
+                                global_bias, v, w)
 
+
+from lfg.derive import dJ
+
+def jacobian_jitted(recode_weight, recode_bias, layer1_weight, layer1_bias, 
+                        layer2_weight, layer2_bias, dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, bias, v, w):
+    
+    w = w @ recode_weight.T + recode_bias
+    Jv = np.eye(3)
+    Jw = recode_weight
+    J_vw = np.block([[Jv, np.zeros((3,3))], [np.zeros((3,3)), Jw]]) # 6x6
+    
     R, v_local, w_local = gs(v, w)     
-    
-    feat = np.array([v_local[0], w_local[0], w_local[1]])
-    h = np.maximum(0, feat @ global_layer1_weight.T + global_layer1_bias)
-    h2 = np.maximum(h @ global_layer2_weight.T + global_layer2_bias, 0) * h + h
-    y = np.maximum(h2 @ global_dec_0_weight.T + global_dec_0_bias, 0)
-    y = y @ global_dec_2_weight.T + global_dec_2_bias
-    y = R@y
-    y = y + global_bias.reshape(-1) 
-    return y
-    
+    J_rvw = dJ(v, w) @ J_vw # 15x6
 
+
+    feat = np.array([v_local[0], w_local[0], w_local[1]])
+    J_feat = J_rvw[[9,12,13], :] # 3x6
+
+    h1 =  feat @ layer1_weight.T + layer1_bias
+    J_h1 = layer1_weight @ J_feat # 32x6
+
+    h1m = np.maximum(0, h1)
+    J_h1m =  np.diag((h1 > 0).astype(float)) @ J_h1# 32x6
+    
+    # self multiplicative layer
+    h2 = h1m @ layer2_weight.T + layer2_bias
+    J_h2_ = layer2_weight
+
+    h2m = np.maximum(h2, 0)
+    J_h2m_ = np.diag((h2 > 0).astype(float)) @ J_h2_ # 32x32
+
+    h2mul = h2m * h1m + h1m
+    J_h2mul_ = J_h2m_ @ np.diag(h1m) + np.diag(1 +  h2m) 
+
+    J_h2mul = J_h2mul_ @ J_h1m # 32x6
+
+    # end self multiplicative layer
+
+
+    # decode layer
+
+    y = np.maximum(h2 @ dec_0_weight.T + dec_0_bias, 0)
+    y = y @ dec_2_weight.T + dec_2_bias
+    y = R@y
+    y = y + bias.reshape(-1) 
+    return y
+
+    J = global_recode_weight
 
 
 @numba.jit(nopython=True)
@@ -237,7 +293,27 @@ class TestCases:
         # print('Physics:', y_phy)
         print('Global Jitted:', y_global)
 
+    @staticmethod
+    def test_jacobian():
+        mnn, mnn_est, autoregr_MNN = get_original_model(compile=False)
 
+        aero_model = mnn.aero_layer
+
+        
+        v = torch.rand(3).cuda()*10
+        w = torch.rand(3).cuda()*10
+        input_tensor = (v, w)
+        forward_func = lambda x, y: aero_model(x[None, :], y[None, :])
+
+        # Compute the Jacobian
+        jacobian_torch = F.jacobian(forward_func, input_tensor)
+
+        torch_time = -time.time()
+        for _ in range(100):
+            jacobian_torch = F.jacobian(forward_func, input_tensor)
+        torch_time += time.time()
+        print('Torch time:', torch_time)
+        print(jacobian_torch)
 
 def validate_3d_plot(cfg):
     mnn,  mnn_est, autoregr_MNN = get_tensorRT_model()
@@ -271,6 +347,7 @@ def validate_3d_plot(cfg):
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
     TestCases.test_aero_forward()
+    # TestCases.test_jacobian()
 
 
 if __name__ == '__main__':
