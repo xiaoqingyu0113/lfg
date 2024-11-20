@@ -1,9 +1,22 @@
-from lfg.derive import dJ
 import numpy as np
+import torch
+from torch.autograd.functional import jacobian
+
+def jacobian_orthonormal(v,w):
+    Jv = np.eye(3)*np.dot(v,w) + np.outer(v,w)
+    Jw = np.outer(v,v)  
+    return Jv, Jw
+
+def forward_torch(v, w):
+    return torch.dot(w, v) * v
 
 
-v = np.array([1, 1, 3])
-w = np.array([4, 2, 6])
+# Example usage
+v = np.random.rand(3)*5
+w = np.array([4.0, 5.0, 6.0])
 
-J = dJ(v, w)
-print(J[:9,:])    
+J = jacobian_orthonormal(v,w)
+print(J)
+
+J_torch = jacobian(forward_torch, inputs=(torch.from_numpy(v), torch.from_numpy(w)))
+print(J_torch)

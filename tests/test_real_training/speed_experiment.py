@@ -20,6 +20,8 @@ from lfg.model_traj.mnn import MNN, autoregr_MNN, AeroModel, BounceModel
 from lfg.estimator import OptimLayer
 from draw_util import draw_util
 import numba
+import logging
+
 
 def matrix_speed():
     def numpy_matmul(A,x):
@@ -105,6 +107,112 @@ def gs(v,w):
     w_local = R.T@ w
 
     return R, v_local, w_local
+@numba.jit(nopython=True)
+def dgs(x):
+    v = x[:3]
+    w = x[3:]
+
+    v_orthonormal = v / np.sqrt(np.dot(v,v)) + np.float32(1e-6)
+
+    # @numba.jit(nopython=True)
+    def J1(v):
+        g = np.dot(v,v) + np.float32(1e-6)
+        sqrt_g = np.sqrt(g) 
+        J = -np.outer(v,v)
+        J = J / (g*sqrt_g)
+        J += np.eye(3)/sqrt_g
+        return J
+    
+    J_vo_v =  J1(v)
+    J_vo_w = np.zeros((3,3), dtype=np.float32)
+
+    
+    proj = np.dot(w, v_orthonormal) * v_orthonormal
+    # @numba.jit(nopython=True)
+    def J2(v,w):
+        Jv = np.eye(3, dtype=np.float32)*np.dot(v,w) + np.outer(v,w)
+        Jw = np.outer(v,v)  
+        return Jv, Jw
+    J_proj_vo, J_proj_w = J2(v_orthonormal, w)
+    J_proj_v = J_proj_vo @ J_vo_v
+    
+    
+    w_orthogonal = w - proj
+    J_wo_w = np.eye(3, dtype=np.float32) - J_proj_w
+    J_wo_v = -J_proj_v
+
+    
+    
+
+    w_orthonormal2 = w_orthogonal / (np.linalg.norm(w_orthogonal) + np.float32(1e-6))
+    J_wo2_wo = J1(w_orthogonal)
+
+    J_wo2_w = J_wo2_wo @ J_wo_w
+    J_wo2_v = J_wo2_wo @ J_wo_v
+
+
+    u_orthonormal = np.cross(v_orthonormal, w_orthonormal2)
+    # @numba.jit(nopython=True)
+    def J3(v, w):
+        return np.array([[np.float32(0), w[2], -w[1]],[-w[2],np.float32(0), w[0]],[w[1], -w[0], np.float32(0)]]), np.array([[np.float32(0), -v[2], v[1]],[v[2], np.float32(0), -v[0]],[-v[1], v[0], np.float32(0)]])
+    
+    J_uo_vo, J_uo_wo2 = J3(v_orthonormal, w_orthonormal2)
+    J_uo_v = J_uo_vo @ J_vo_v + J_uo_wo2 @ J_wo2_v
+    J_uo_w = J_uo_wo2 @ J_wo2_w
+
+    R = np.stack((v_orthonormal, w_orthonormal2, u_orthonormal), axis=-1)
+
+    J_r_v = np.concatenate((np.stack((J_vo_v[0,:],J_wo2_v[0,:], J_uo_v[0,:])), 
+                        np.stack((J_vo_v[1,:],J_wo2_v[1,:], J_uo_v[1,:])), 
+                        np.stack((J_vo_v[2,:],J_wo2_v[2,:], J_uo_v[2,:]))), axis=0)
+
+
+    J_r_w = np.concatenate((np.stack((J_proj_w[0,:],J_wo2_w[0,:], J_uo_w[0,:])),
+                        np.stack((J_proj_w[1,:],J_wo2_w[1,:], J_uo_w[1,:])), 
+                        np.stack((J_proj_w[2,:],J_wo2_w[2,:], J_uo_w[2,:])),), axis=0)
+
+    
+    # J_r_w = np.stack((np.stack((J_proj_w[0,:],J_wo2_w[0,:], J_uo_w[0,:])),
+    #                    np.stack((J_proj_w[1,:],J_wo2_w[1,:], J_uo_w[1,:])), 
+    #                    np.stack((J_proj_w[2,:],J_wo2_w[2,:], J_uo_w[2,:]))), axis=0)
+    
+
+
+    # v_local = R.T@ v
+    # w_local = R.T@ w
+    # @numba.jit(nopython=True)
+    def J4(R_r, v):
+        J_r = np.zeros((3, 9), dtype=np.float32)
+        for i in range(3):
+            J_r[i, i*3:(i+1)*3] = v
+        J_v = R_r.reshape(3,3).T
+        return J_r, J_v
+    
+    J_vlocal_r, J_vlocal_v = J4(R.reshape(-1), v)
+    J_wlocal_r, J_wlocal_w = J4(R.reshape(-1), w)
+
+    J_vlocal_v = J_vlocal_v + J_vlocal_r @ J_r_v
+
+    J_vlocal_w =  J_vlocal_r @ J_r_w
+    J_wlocal_w = J_wlocal_w + J_wlocal_r @ J_r_w
+    J_wlocal_v =  J_wlocal_r @ J_r_v
+
+    return np.concatenate((np.concatenate((J_r_v, J_r_w), axis=1), np.concatenate((J_vlocal_v, J_vlocal_w), axis=1), np.concatenate((J_wlocal_v, J_wlocal_w), axis=1),), axis=0)
+
+
+def gs_torch(v,w):
+    v_orthonormal = v / (torch.norm(v) + 1e-6)
+    proj = torch.dot(w, v_orthonormal) * v_orthonormal
+    w_orthogonal = w - proj
+    w_orthonormal = w_orthogonal / (torch.norm(w_orthogonal) + 1e-6)
+    u_orthonormal = torch.cross(v_orthonormal, w_orthonormal)
+
+    R = torch.stack((v_orthonormal, w_orthonormal, u_orthonormal), dim=-1)
+
+    v_local = R.T@v
+    w_local = R.T@ w
+
+    return R, v_local, w_local
 
 def aero_forward(aero_params, v, w):
     w = w @ aero_params['recode.weight'].T + aero_params['recode.bias']
@@ -174,51 +282,165 @@ def aero_forward_global_jitted(v,w):
 
 from lfg.derive import dJ
 
-def jacobian_jitted(recode_weight, recode_bias, layer1_weight, layer1_bias, 
+# @numba.jit(nopython=True)
+def jacobian_jitted(v,w):
+    return _jacobian_jitted(global_recode_weight, global_recode_bias,
+                            global_layer1_weight, global_layer1_bias,
+                            global_layer2_weight, global_layer2_bias,
+                            global_dec_0_weight, global_dec_0_bias,
+                            global_dec_2_weight, global_dec_2_bias,
+                            global_bias, v, w)
+
+# @numba.jit(nopython=True)
+def _jacobian_jitted(recode_weight, recode_bias, layer1_weight, layer1_bias, 
                         layer2_weight, layer2_bias, dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, bias, v, w):
     
     w = w @ recode_weight.T + recode_bias
-    Jv = np.eye(3)
+    Jv = np.eye(3, dtype=np.float32)
     Jw = recode_weight
-    J_vw = np.block([[Jv, np.zeros((3,3))], [np.zeros((3,3)), Jw]]) # 6x6
+    # J_vw = np.block([[Jv, np.zeros((3,3))], [np.zeros((3,3)), Jw]]) # 6x6
+    # J_vw use concatenated instead of block
+    J_vw = np.concatenate((np.concatenate((Jv, np.zeros((3,3),dtype=np.float32)), axis=1), np.concatenate((np.zeros((3,3), dtype=np.float32), Jw), axis=1)), axis=0) # 6x6
     
     R, v_local, w_local = gs(v, w)     
-    J_rvw = dJ(v, w) @ J_vw # 15x6
 
+    # J_rvw = dJ(v, w) @ J_vw # 15x6
+    J_rvw = dgs(np.concatenate((v, w))) @ J_vw
+
+    # -------------------------------
+    # J_rw passed the test!
+    # -------------------------------
 
     feat = np.array([v_local[0], w_local[0], w_local[1]])
-    J_feat = J_rvw[[9,12,13], :] # 3x6
+
+    # J_feat = J_rvw[[9,12,13], :] # 3x6
+    # J_feat use concatenated instead of block
+    J_feat = np.stack((J_rvw[9,:], J_rvw[12,:], J_rvw[13,:])) # 3x6
 
     h1 =  feat @ layer1_weight.T + layer1_bias
+   
+    
     J_h1 = layer1_weight @ J_feat # 32x6
 
-    h1m = np.maximum(0, h1)
-    J_h1m =  np.diag((h1 > 0).astype(float)) @ J_h1# 32x6
+    h1m = np.maximum(np.float32(0.0), h1)
+    # J_h1m =  np.diag((h1 > 0.0).astype(float)) @ J_h1# 32x6
+
+    # don't use implicit bound function for bool
+    tmp = np.zeros_like(h1, dtype=np.float32)
+    tmp[h1 > 0] = np.float32(1.0)
+    J_h1m = np.diag(tmp) @ J_h1 # 32x6
+    
+    return J_feat
+    # -------------------------------
+    # J_h1m passed the test!
+    # -------------------------------
     
     # self multiplicative layer
     h2 = h1m @ layer2_weight.T + layer2_bias
     J_h2_ = layer2_weight
 
     h2m = np.maximum(h2, 0)
-    J_h2m_ = np.diag((h2 > 0).astype(float)) @ J_h2_ # 32x32
+    # J_h2m_ = np.diag((h2 > 0).astype(float)) @ J_h2_ # 32x32
+    tmp = np.zeros_like(h2, dtype=np.float32)
+    tmp[h2 > 0] = np.float32(1.0)
+    J_h2m_ = np.diag(tmp) @ J_h2_ # 32x32
+    J_h2m = J_h2m_ @ J_h1m # 32x6
 
     h2mul = h2m * h1m + h1m
-    J_h2mul_ = J_h2m_ @ np.diag(h1m) + np.diag(1 +  h2m) 
-
-    J_h2mul = J_h2mul_ @ J_h1m # 32x6
-
+    J_h2mul = np.diag(h1m)@J_h2m + np.diag(1 +  h2m) @ J_h1m
     # end self multiplicative layer
-
+    # -------------------------------
+    # J_h2mul passed the test!
+    # -------------------------------
 
     # decode layer
+    
+    y1 = h2mul @ dec_0_weight.T + dec_0_bias
+    y1m = np.maximum(y1, 0)
 
-    y = np.maximum(h2 @ dec_0_weight.T + dec_0_bias, 0)
-    y = y @ dec_2_weight.T + dec_2_bias
-    y = R@y
-    y = y + bias.reshape(-1) 
-    return y
+    tmp = np.zeros_like(y1, dtype=np.float32)
+    tmp[y1 > 0] = np.float32(1.0)
+    J_y1m_ = np.diag(tmp) @ dec_0_weight # 128x32
+    # J_y1m_ = np.diag((y1 > 0).astype(float)) @ dec_0_weight # 128x32
+    J_y1m = J_y1m_ @ J_h2mul # 128x6
 
-    J = global_recode_weight
+    y2 = y1m @ dec_2_weight.T + dec_2_bias
+    J_y2 = dec_2_weight @ J_y1m # 3x3
+
+    y3 = R@y2 + bias.reshape(-1)
+    J_r = J_rvw[:9,:]
+    J_y3_y2 = R # 3x3
+    # J_y3_r = np.block([[y2, np.zeros(3,dtype=np.float32), np.zeros(3,dtype=np.float32)], [np.zeros(3,dtype=np.float32), y2, np.zeros(3,dtype=np.float32)], [np.zeros(3,dtype=np.float32), np.zeros(3,dtype=np.float32), y2]]) # 3x9
+    # use concatenated instead of block
+
+    J_y3_r = np.stack((np.concatenate((y2, np.zeros(3,dtype=np.float32), np.zeros(3,dtype=np.float32))), 
+                             np.concatenate((np.zeros(3,dtype=np.float32), y2, np.zeros(3,dtype=np.float32))),
+                               np.concatenate((np.zeros(3,dtype=np.float32), np.zeros(3,dtype=np.float32), y2)),)) # 3x9
+  
+    J_y3 = J_y3_r @ J_r + J_y3_y2 @ J_y2
+     # -------------------------------
+    # J_y3 passed the test!
+    # -------------------------------
+
+    return J_y3
+
+def forward_twin(v,w):
+    return _forward_twin(global_recode_weight, global_recode_bias,
+                            global_layer1_weight, global_layer1_bias,
+                            global_layer2_weight, global_layer2_bias,
+                            global_dec_0_weight, global_dec_0_bias,
+                            global_dec_2_weight, global_dec_2_bias,
+                            global_bias, v, w)
+
+def _forward_twin(recode_weight, recode_bias, layer1_weight, layer1_bias, 
+                        layer2_weight, layer2_bias, dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, bias, v, w):
+    
+    ## set up the parameters
+    recode_weight = torch.tensor(recode_weight)
+    recode_bias = torch.tensor(recode_bias)
+    layer1_weight = torch.tensor(layer1_weight)
+    layer1_bias = torch.tensor(layer1_bias)
+
+    layer2_weight = torch.tensor(layer2_weight)
+    layer2_bias = torch.tensor(layer2_bias)
+    dec_0_bias = torch.tensor(dec_0_bias)
+    dec_0_weight = torch.tensor(dec_0_weight)
+    dec_2_bias = torch.tensor(dec_2_bias)
+    dec_2_weight = torch.tensor(dec_2_weight)
+    bias = torch.tensor(bias)
+
+    # forward
+    w = w @ recode_weight.T + recode_bias
+    R, v_local, w_local = gs_torch(v, w)     
+
+    # return torch.cat([R.reshape(-1), v_local, w_local], dim=0)
+
+    # R, v,w local passed the test
+    # ---------------------------------
+    relu = nn.ReLU()
+    feat = torch.stack([v_local[0], w_local[0], w_local[1]])  # Use stack instead of creating a new tensor
+    h1 =  feat @ layer1_weight.T + layer1_bias
+    h1m = relu(h1)
+
+    return feat
+    
+    # h1m passed the test
+    # ---------------------------------
+
+    # h2 = h1m @ layer2_weight.T + layer2_bias
+    # h2m = relu(h2)
+    # h2mul = h2m * h1m + h1m
+
+    # h2mul passed the test
+    # ---------------------------------
+    # y1 = h2mul @ dec_0_weight.T + dec_0_bias
+    # y1m = relu(y1)
+    # y2 = y1m @ dec_2_weight.T + dec_2_bias
+    # y3 = R@y2+ bias.reshape(-1)
+                           
+    return y3
+
+
 
 
 @numba.jit(nopython=True)
@@ -302,18 +524,200 @@ class TestCases:
         
         v = torch.rand(3).cuda()*10
         w = torch.rand(3).cuda()*10
-        input_tensor = (v, w)
-        forward_func = lambda x, y: aero_model(x[None, :], y[None, :])
+        # input_tensor = (v, w)
+        # forward_func = lambda x, y: aero_model(x[None, :], y[None, :])
 
-        # Compute the Jacobian
-        jacobian_torch = F.jacobian(forward_func, input_tensor)
+        # # Compute the Jacobian
+        # jacobian_torch = F.jacobian(forward_func, input_tensor)
+        # torch_time = -time.time()
+        # for _ in range(100):
+        #     jacobian_torch = F.jacobian(forward_func, input_tensor)
+        # torch_time += time.time()
+        # print('Torch time:', torch_time)
+        # print(jacobian_torch)
 
+
+        # v_np = v.cpu().numpy()
+        # w_np = w.cpu().numpy()
+        # jacobian_np = jacobian_jitted(v_np, w_np)
+        # np_time = -time.time()
+        # for _ in range(100):
+        #     jacobian_np = jacobian_jitted(v_np, w_np)
+        # np_time += time.time()
+        # print('Numpy time:', np_time)
+        # print(jacobian_np)
+
+
+
+        ## accuracy test
+        v = v.cpu()
+        w = w.cpu()
+        v_np = v.cpu().numpy()
+        w_np = w.cpu().numpy()
+        jacobian_twin = F.jacobian(lambda x: forward_twin(x[:3], x[3:]), torch.cat([v, w], dim=0),)
+        jacobian_np = jacobian_jitted(v_np, w_np)
+        jacobian_twin = jacobian_twin.cpu().detach().numpy()
+        error = np.abs(jacobian_twin - jacobian_np)
+        idx= np.argmax(error)
+        r_idx, c_idx = np.unravel_index(idx, error.shape)  # Convert to 2D index
+        max_error = error.max()
+        print('Torch:')
+        print(jacobian_twin)
+        print('Numpy:')
+        print(jacobian_np)
+        print('Error:', jacobian_twin[r_idx, c_idx], jacobian_np[r_idx, c_idx], max_error)
+
+    @staticmethod
+    def test_gs_gradient():
+
+     
+        def _gs_torch(x):
+            v= x[:3]
+            w = x[3:]
+            v_orthonormal = v / (torch.norm(v) + 1e-6)
+            proj = torch.dot(w, v_orthonormal) * v_orthonormal
+            w_orthogonal = w - proj
+
+            w_orthogonal2 = w_orthogonal / (torch.norm(w_orthogonal) + 1e-6)
+            u_orthonormal = torch.cross(v_orthonormal, w_orthogonal2)
+
+
+
+            R = torch.stack((v_orthonormal, w_orthogonal2, u_orthonormal), dim=-1)
+
+         
+
+            v_local = R.T@v
+            w_local = R.T@ w
+            R, v_local, w_local = gs_torch(x[:3], x[3:])
+            return torch.cat([R.reshape(-1), v_local, w_local], dim=0)
+        
+        @numba.jit(nopython=True)
+        def dgs(x):
+            v = x[:3]
+            w = x[3:]
+
+            v_orthonormal = v / np.sqrt(np.dot(v,v)) + np.float32(1e-6)
+
+            # @numba.jit(nopython=True)
+            def J1(v):
+                g = np.dot(v,v) + 1e-6
+                sqrt_g = np.sqrt(g) 
+                J = -np.outer(v,v)
+                J = J / (g*sqrt_g)
+                J += np.eye(3)/sqrt_g
+                return J
+            
+            J_vo_v =  J1(v)
+            J_vo_w = np.zeros((3,3))
+
+            
+            proj = np.dot(w, v_orthonormal) * v_orthonormal
+            # @numba.jit(nopython=True)
+            def J2(v,w):
+                Jv = np.eye(3)*np.dot(v,w) + np.outer(v,w)
+                Jw = np.outer(v,v)  
+                return Jv, Jw
+            J_proj_vo, J_proj_w = J2(v_orthonormal, w)
+            J_proj_v = J_proj_vo @ J_vo_v
+            
+            
+            w_orthogonal = w - proj
+            J_wo_w = np.eye(3) - J_proj_w
+            J_wo_v = -J_proj_v
+
+            
+            
+
+            w_orthonormal2 = w_orthogonal / (np.linalg.norm(w_orthogonal) + np.float32(1e-6))
+            J_wo2_wo = J1(w_orthogonal)
+
+            J_wo2_w = J_wo2_wo @ J_wo_w
+            J_wo2_v = J_wo2_wo @ J_wo_v
+
+
+            u_orthonormal = np.cross(v_orthonormal, w_orthonormal2)
+            # @numba.jit(nopython=True)
+            def J3(v, w):
+                return np.array([[0, w[2], -w[1]],[-w[2], 0, w[0]],[w[1], -w[0], 0]]), np.array([[0, -v[2], v[1]],[v[2], 0, -v[0]],[-v[1], v[0], 0]])
+            
+            J_uo_vo, J_uo_wo2 = J3(v_orthonormal, w_orthonormal2)
+            J_uo_v = J_uo_vo @ J_vo_v + J_uo_wo2 @ J_wo2_v
+            J_uo_w = J_uo_wo2 @ J_wo2_w
+
+            R = np.stack((v_orthonormal, w_orthonormal2, u_orthonormal), axis=-1)
+
+            J_r_v = np.concatenate((np.stack((J_vo_v[0,:],J_wo2_v[0,:], J_uo_v[0,:])), 
+                              np.stack((J_vo_v[1,:],J_wo2_v[1,:], J_uo_v[1,:])), 
+                              np.stack((J_vo_v[2,:],J_wo2_v[2,:], J_uo_v[2,:]))), axis=0)
+
+
+            J_r_w = np.concatenate((np.stack((J_proj_w[0,:],J_wo2_w[0,:], J_uo_w[0,:])),
+                                np.stack((J_proj_w[1,:],J_wo2_w[1,:], J_uo_w[1,:])), 
+                                np.stack((J_proj_w[2,:],J_wo2_w[2,:], J_uo_w[2,:])),), axis=0)
+
+            
+            # J_r_w = np.stack((np.stack((J_proj_w[0,:],J_wo2_w[0,:], J_uo_w[0,:])),
+            #                    np.stack((J_proj_w[1,:],J_wo2_w[1,:], J_uo_w[1,:])), 
+            #                    np.stack((J_proj_w[2,:],J_wo2_w[2,:], J_uo_w[2,:]))), axis=0)
+            
+    
+
+            # v_local = R.T@ v
+            # w_local = R.T@ w
+            # @numba.jit(nopython=True)
+            def J4(R_r, v):
+                J_r = np.zeros((3, 9))
+                for i in range(3):
+                    J_r[i, i*3:(i+1)*3] = v
+                J_v = R_r.reshape(3,3).T
+                return J_r, J_v
+            
+            J_vlocal_r, J_vlocal_v = J4(R.reshape(-1), v)
+            J_wlocal_r, J_wlocal_w = J4(R.reshape(-1), w)
+
+            J_vlocal_v = J_vlocal_v + J_vlocal_r @ J_r_v
+
+            J_vlocal_w =  J_vlocal_r @ J_r_w
+            J_wlocal_w = J_wlocal_w + J_wlocal_r @ J_r_w
+            J_wlocal_v =  J_wlocal_r @ J_r_v
+        
+            return np.concatenate((np.concatenate((J_r_v, J_r_w), axis=1), np.concatenate((J_vlocal_v, J_vlocal_w), axis=1), np.concatenate((J_wlocal_v, J_wlocal_w), axis=1),), axis=0)
+
+        x_cuda = torch.rand(6).cuda()   
+        dgs_torch = F.jacobian(_gs_torch, x_cuda)
         torch_time = -time.time()
-        for _ in range(100):
-            jacobian_torch = F.jacobian(forward_func, input_tensor)
+        for  _ in range(100):
+            dgs_torch = F.jacobian(_gs_torch, x_cuda)
         torch_time += time.time()
+
         print('Torch time:', torch_time)
-        print(jacobian_torch)
+
+        x = x_cuda.cpu().detach().numpy().astype(np.float32)
+        dgs_np = dgs(x)
+        np_time = -time.time()
+        for  i in range(100):
+            dgs_np = dgs(x)
+        np_time += time.time()
+        print('Numpy time:', np_time)
+
+
+        ## accuracy test
+        dgs_torch = F.jacobian(_gs_torch, torch.tensor(x))
+        dgs_torch = dgs_torch.cpu().numpy()
+        print(dgs_torch[9:,:])
+
+        dgs_np = dgs(x)
+        print(dgs_np[9:,:])
+
+        error = np.abs(dgs_torch - dgs_np)
+        idx= np.argmax(error)
+        r_idx, c_idx = np.unravel_index(idx, error.shape)  # Convert to 2D index
+        max_error = error.max()
+        print('Error:', dgs_torch[r_idx, c_idx], dgs_np[r_idx, c_idx], max_error)
+
+
+
 
 def validate_3d_plot(cfg):
     mnn,  mnn_est, autoregr_MNN = get_tensorRT_model()
@@ -346,8 +750,11 @@ def validate_3d_plot(cfg):
 
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
-    TestCases.test_aero_forward()
-    # TestCases.test_jacobian()
+    # TestCases.test_aero_forward()
+    TestCases.test_jacobian()
+    # TestCases.test_gs_gradient()
+
+    
 
 
 if __name__ == '__main__':
