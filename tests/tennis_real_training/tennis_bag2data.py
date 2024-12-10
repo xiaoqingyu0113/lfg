@@ -64,14 +64,13 @@ def read_cam_calibration(filename):
 
 def view_triangulation():
     detections = {f'camera_{i}': [] for i in range(1,7)}
-    # bag = rosbag.Bag('/home/qingyu/Downloads/20241209_tennis/data1_2024-12-09-17-32-32.bag')
+    bag = rosbag.Bag('/home/qingyu/Downloads/20241209_tennis/data1_2024-12-09-17-32-32.bag')
     camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
     date = 'Jul18'
     cam_params = [read_cam_calibration(f'conf/camera/{cname}_calibration_{date}.yaml') for cname in camera_names]
     cam_params_dict =  {'camera_'+str(i+1):cam_params[i] for i in range(6)}
 
-    print(cam_params_dict)
-    raise
+ 
     # read all detections
     for topic, msg, t in bag.read_messages():
         camera_id = topic.split('/')[1]
@@ -79,7 +78,6 @@ def view_triangulation():
             detections[camera_id].append([msg.header.stamp.to_sec(), p.x, p.y])
     bag.close()
 
-    #
 def main():
     # view_points()
     view_triangulation()
