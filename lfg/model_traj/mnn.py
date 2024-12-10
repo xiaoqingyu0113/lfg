@@ -145,7 +145,7 @@ class BounceModel(nn.Module):
         v_local = torch.cat([v2d_local, v[...,2:3]], dim=-1)
         w_local = torch.cat([w2d_local, w[...,2:3]], dim=-1)
 
-        # normalize
+        # normalize, imperial unit
         v_normalize = v_local / 3.0
         w_normalize = w_local / 7.0
 
@@ -169,6 +169,8 @@ class BounceModel(nn.Module):
 
         v_new = v_new.reshape(shapes)
         w_new = w_new.reshape(shapes)
+
+        # To Try: may need another rotation matrix to compensate the rotation bias
 
         return v_new, w_new
     

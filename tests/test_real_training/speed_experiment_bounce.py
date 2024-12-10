@@ -29,28 +29,6 @@ from lfg.derive import gs, dgs, aero_forward, aero_jacobian, _aero_forward
 DTYPE = np.float64
 DTYPE_TORCH = torch.float64
 
-def matrix_speed():
-    def numpy_matmul(A,x):
-        return np.matmul(A, x)
-    
-    def torch_matmul(A,x):
-        return torch.matmul(A, x)
-    N  = 6
-    A_np, x_np = np.random.rand(N, N), np.random.rand(N, 1)
-    A_torch, x_torch = torch.rand(N,N).cuda(), torch.rand(N,1).cuda()
-
-    start = time.time()
-    for _ in range(1000):
-        numpy_matmul(A_np, x_np)
-    print('Numpy time:', (time.time() - start)/1000)
-
-    start = time.time()
-    for _ in range(1000):
-        torch_matmul(A_torch, x_torch)
-    print('Torch time:', (time.time() - start)/1000)
-
-
-    
 
 
 def get_original_model(compile=True):
@@ -89,10 +67,13 @@ def get_np_params():
 
     aero_params = {}
     bounce_params = {}
+
+    print('----------aero model-----------------------')
     for name, param in aero_model.named_parameters():
         aero_params[name] = param.cpu().detach().numpy().astype(DTYPE)
         print(name, aero_params[name].shape)
     
+    print('----------bounce model-----------------------')
     for name, param in bounce_model.named_parameters():
         bounce_params[name] = param.cpu().detach().numpy().astype(DTYPE)
         print(name, bounce_params[name].shape)
@@ -100,64 +81,65 @@ def get_np_params():
     return aero_params, bounce_params
 
 
-def gs_torch(v,w):
-    v_orthonormal = v / (torch.norm(v) + 1e-6)
-    proj = torch.dot(w, v_orthonormal) * v_orthonormal
-    w_orthogonal = w - proj
-    w_orthonormal = w_orthogonal / (torch.norm(w_orthogonal) + 1e-6)
-    u_orthonormal = torch.linalg.cross(v_orthonormal, w_orthonormal)
-
-    R = torch.stack((v_orthonormal, w_orthonormal, u_orthonormal), dim=-1)
-
-    v_local = R.T@v
-    w_local = R.T@ w
+def gs2d_torch(v2d,w2d):
+    '''
+    passed the test
+    '''
+    v_normal = v2d / (torch.linalg.norm(v2d) + 1e-8)
+    R = torch.stack([
+        torch.stack([v_normal[0], -v_normal[1]]), 
+        torch.stack([v_normal[1], v_normal[0]])   
+    ])
+    v_local = R.T@v2d
+    w_local = R.T@ w2d
 
     return R, v_local, w_local
 
 
+_, global_bounce_params = get_np_params()
+global_bounce_recode_weight = global_bounce_params['recode.weight']
+global_bounce_recode_bias = global_bounce_params['recode.bias']
+global_bounce_layer1_weight = global_bounce_params['layer1.0.weight']
+global_bounce_layer1_bias = global_bounce_params['layer1.0.bias']
+global_bounce_layer2_weight = global_bounce_params['layer2.0.weight']
+global_bounce_layer2_bias = global_bounce_params['layer2.0.bias']
+global_bounce_layer3_weight = global_bounce_params['layer3.0.weight']
+global_bounce_layer3_bias = global_bounce_params['layer3.0.bias']
 
+global_dec_0_weight = global_bounce_params['dec.0.weight']
+global_dec_0_bias = global_bounce_params['dec.0.bias']
+global_dec_2_weight = global_bounce_params['dec.2.weight']
+global_dec_2_bias = global_bounce_params['dec.2.bias']
 
-
-global_aero_params, _ = get_np_params()
-global_recode_weight = global_aero_params['recode.weight']
-global_recode_bias = global_aero_params['recode.bias']
-global_layer1_weight = global_aero_params['layer1.0.weight']
-global_layer1_bias = global_aero_params['layer1.0.bias']
-global_layer2_weight = global_aero_params['layer2.0.weight']
-global_layer2_bias = global_aero_params['layer2.0.bias']
-global_dec_0_weight = global_aero_params['dec.0.weight']
-global_dec_0_bias = global_aero_params['dec.0.bias']
-global_dec_2_weight = global_aero_params['dec.2.weight']
-global_dec_2_bias = global_aero_params['dec.2.bias']
-global_bias = global_aero_params['bias']
-
-    
 
 
 def forward_twin(v,w):
-    return _forward_twin(global_recode_weight, global_recode_bias,
-                            global_layer1_weight, global_layer1_bias,
-                            global_layer2_weight, global_layer2_bias,
-                            global_dec_0_weight, global_dec_0_bias,
-                            global_dec_2_weight, global_dec_2_bias,
-                            global_bias, v, w)
+    return _forward_twin(global_bounce_recode_weight, global_bounce_recode_bias,
+                        global_bounce_layer1_weight, global_bounce_layer1_bias,
+                        global_bounce_layer2_weight, global_bounce_layer2_bias,
+                        global_bounce_layer3_weight, global_bounce_layer3_bias,
+                        global_dec_0_weight, global_dec_0_bias,
+                        global_dec_2_weight, global_dec_2_bias,
+                        v, w)
 
 def _forward_twin(recode_weight, recode_bias, layer1_weight, layer1_bias, 
-                        layer2_weight, layer2_bias, dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, bias, v, w):
+                        layer2_weight, layer2_bias, layer3_weight, layer3_bias,
+                        dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, v, w):
     
     ## set up the parameters
     recode_weight = torch.tensor(recode_weight)
     recode_bias = torch.tensor(recode_bias)
     layer1_weight = torch.tensor(layer1_weight)
     layer1_bias = torch.tensor(layer1_bias)
-
     layer2_weight = torch.tensor(layer2_weight)
     layer2_bias = torch.tensor(layer2_bias)
-    dec_0_bias = torch.tensor(dec_0_bias)
+    layer3_weight = torch.tensor(layer3_weight)
+    layer3_bias = torch.tensor(layer3_bias)
     dec_0_weight = torch.tensor(dec_0_weight)
-    dec_2_bias = torch.tensor(dec_2_bias)
+    dec_0_bias = torch.tensor(dec_0_bias)
     dec_2_weight = torch.tensor(dec_2_weight)
-    bias = torch.tensor(bias)
+    dec_2_bias = torch.tensor(dec_2_bias)
+
 
     # forward
     w = w @ recode_weight.T + recode_bias
@@ -222,8 +204,8 @@ class TestCases:
         w =  w.reshape(-1).cpu().detach().numpy().astype(DTYPE)
         jitted_time = time.time()
         for _ in range(100):
-            y_np_jitted = _aero_forward(global_recode_weight, global_recode_bias,
-                            global_layer1_weight, global_layer1_bias,
+            y_np_jitted = _aero_forward(global_aero_recode_weight, global_aero_recode_bias,
+                            global_aero_layer1_weight, global_aero_layer1_bias,
                             global_layer2_weight, global_layer2_bias,
                             global_dec_0_weight, global_dec_0_bias,
                             global_dec_2_weight, global_dec_2_bias,
@@ -307,31 +289,14 @@ class TestCases:
     def test_gs_gradient():
 
      
-        def _gs_torch(x):
-            v= x[:3]
-            w = x[3:]
-            v_orthonormal = v / (torch.norm(v) + 1e-6)
-            proj = torch.dot(w, v_orthonormal) * v_orthonormal
-            w_orthogonal = w - proj
 
-            w_orthogonal2 = w_orthogonal / (torch.norm(w_orthogonal) + 1e-6)
-            u_orthonormal = torch.cross(v_orthonormal, w_orthogonal2)
-
-            R = torch.stack((v_orthonormal, w_orthogonal2, u_orthonormal), dim=-1)
-
-        
-            v_local = R.T@v
-            w_local = R.T@ w
-            R, v_local, w_local = gs_torch(x[:3], x[3:])
-            return torch.cat([R.reshape(-1), v_local, w_local], dim=0)
-        
         
         
         x_cuda = torch.rand(6).cuda()   
-        dgs_torch = F.jacobian(_gs_torch, x_cuda)
+        dgs_torch = F.jacobian(gs2d_torch, x_cuda)
         torch_time = -time.time()
         for  _ in range(100):
-            dgs_torch = F.jacobian(_gs_torch, x_cuda)
+            dgs_torch = F.jacobian(gs2d_torch, x_cuda)
         torch_time += time.time()
 
         print('Torch time:', torch_time)
@@ -346,7 +311,7 @@ class TestCases:
 
 
         ## accuracy test
-        dgs_torch = F.jacobian(_gs_torch, torch.tensor(x))
+        dgs_torch = F.jacobian(gs2d_torch, torch.tensor(x))
         dgs_torch = dgs_torch.cpu().numpy()
 
         dgs_np = dgs(x)
@@ -395,8 +360,8 @@ def validate_3d_plot(cfg):
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
     # TestCases.test_aero_forward()
-    TestCases.test_jacobian()
-    # TestCases.test_gs_gradient()
+    # TestCases.test_jacobian()
+    TestCases.test_gs_gradient()
 
     
 
