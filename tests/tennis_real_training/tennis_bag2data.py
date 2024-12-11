@@ -72,11 +72,61 @@ def view_triangulation():
 
  
     # read all detections
+    prev_dets = None
+    prev_camid = None
+    points3d = []
     for topic, msg, t in bag.read_messages():
-        camera_id = topic.split('/')[1]
-        for p in msg.points:
-            detections[camera_id].append([msg.header.stamp.to_sec(), p.x, p.y])
+        curr_camid = topic.split('/')[1]
+        curr_dets = [np.array([p.x, p.y]) for p in msg.points]
+        # triangulate
+        if prev_dets is not None and prev_camid != curr_camid:
+            # pairwise triangulation
+            pts3d, bp_errors = [], []
+            for prev_det, curr_det in zip(prev_dets, curr_dets):
+                p3d = triangulate(prev_det, curr_det, cam_params_dict[prev_camid], cam_params_dict[curr_camid])
+                pts3d.append(p3d)
+                bp_errors.append(np.linalg.norm(cam_params_dict[prev_camid].proj2img(p3d) - prev_det) + np.linalg.norm(cam_params_dict[curr_camid].proj2img(p3d) - curr_det))
+            
+            # filter pts3d by reprojection error
+            bp_errors = np.array(bp_errors)
+            pts3d = np.array(pts3d)
+            mask = bp_errors < 10
+            pts3d = pts3d[mask]
+
+            # check if ball is in the court
+            if len(pts3d) > 0:
+                mask = np.logical_and(pts3d[:,0] > 0, pts3d[:,0] < 23.77)
+                mask = np.logical_and(mask, np.logical_and(pts3d[:,1] > -5.5, pts3d[:,1] < 5.5))
+                pts3d = pts3d[mask]
+
+            if len(pts3d) > 1 and len(points3d) > 0:
+                # choose closest point to the latest point3d
+                latest_point3d = points3d[-1]
+                dists = np.linalg.norm(pts3d - latest_point3d, axis=1)
+                idx = np.argmin(dists)
+                points3d.append(pts3d[idx])
+
+            elif len(pts3d) == 1:
+                pts3d = pts3d[0]
+                points3d.append(pts3d)
+            
+
+        prev_dets = curr_dets
+        prev_camid = curr_camid
+
     bag.close()
+    
+    # plot out the detections
+    points3d = np.array(points3d)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.scatter(points3d[:,0], points3d[:,1], points3d[:,2], s=1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    set_axes_equal(ax)
+    plt.show()
+
 
 def main():
     # view_points()
