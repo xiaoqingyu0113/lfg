@@ -172,7 +172,7 @@ class DataCleaner:
 
     
     def open_bag(self, event):
-        file = filedialog.askopenfilename(initialdir="/home/qingyu/Downloads/20241209_tennis")
+        file = filedialog.askopenfilename(initialdir="~/Downloads/20241209_tennis")
         if file and file.endswith('.bag'):
             self.states['detections'] = read_from_bag(file)
             # draw the detections on canvas
@@ -307,7 +307,7 @@ class DataCleaner:
         ax.set_ylim(0, 1024)
         ax.invert_yaxis()
         ax.set_title(f'current traj: {self.states["current_traj"]}')
-        ax.legend()
+        # ax.legend()
 
         # convert the plot to image
         fig.canvas.draw()
@@ -349,12 +349,13 @@ class DataCleaner:
 #         plt.show()
 
    
-
-
-
-if __name__ == "__main__":
+def start_app():
     root = tk.Tk()
     app = DataCleaner(root)
     root.mainloop()
+
+
+if __name__ == "__main__":
+    # start_app()
 
     # view_cleaned_trajectory()
