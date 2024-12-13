@@ -144,3 +144,4 @@ def get_summary_writer(config) -> Tuple[SummaryWriter, int]:
         initial_step = max([find_writer_last_step(str(rd)) for rd in loss_dir])
 
     return tb_writer, initial_step
+

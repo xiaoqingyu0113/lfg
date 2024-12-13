@@ -9,6 +9,8 @@ import glob
 import json
 import matplotlib as mlp
 import rosbag
+from pycamera import triangulate, CameraParam, set_axes_equal
+import yaml
 
 
 def read_from_bag(bag_file):
@@ -318,35 +320,122 @@ class DataCleaner:
         self.canvas.create_image(0, 0, image=img_tk, anchor='nw')
         self.canvas.image = img_tk
 
+def read_cam_calibration(filename):
+    with open(filename,'r') as f:
+        data = yaml.load(f, Loader=yaml.FullLoader)
 
-# def view_cleaned_trajectory():
-#     with open('data/real/detections_tennis/data1_2024-12-09-17-32-32.json', 'r') as f:
-#         detections = json.load(f)
+    K = np.array(data['camera_matrix']['data']).reshape(3,3)
+    R = np.array(data['R_cam_world']).reshape(3,3)
+    t = np.array(data['t_world_cam'])
+    cam_param = CameraParam(K, R, -R@t)
+
+    #  ------------ test,  pose in gtsam should be camera pose in the world frame ------------
+    # K_gtsam = gtsam.Cal3_S2(K[0,0], K[1,1], K[2,2], K[0,2], K[1,2])
+    # R_gtsam = gtsam.Rot3(R.T) 
+    # t_gtsam = gtsam.Point3(t[0],t[1],t[2])
+    # pose1 = gtsam.Pose3(R_gtsam, t_gtsam)
+    # camera1_gtsam = gtsam.PinholeCameraCal3_S2(pose1, K_gtsam)
+
+    # p0 =  np.array([0,0,0])
+    # print(camera1_gtsam.project(p0))
+    # print(cam_param.proj2img(p0))
+
+    return cam_param
+
+def detections2points3d(detections, detection_filename):
+    DEBUG = True # if True, detection_filename should be provided
+
+    camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
+    date = 'Jul18'
+    cam_params = [read_cam_calibration(f'conf/camera/{cname}_calibration_{date}.yaml') for cname in camera_names]
+    cam_params_dict =  {'camera_'+str(i+1):cam_params[i] for i in range(6)}
+
+
+    prev_time = None
+    prev_uv = None
+    prev_camera_id = None
+    prev_traj_idx = None
+
+    points3d = []
     
-#     max_traj_idx = np.array(detections['camera_1'])[:, 0].max().astype(int)
+    for det in detections:
+        traj_idx, data_idx, timestamp, camera_id, u, v = det
+        # triangulate the 3d point
+        if prev_time is not None \
+            and prev_camera_id != camera_id \
+            and prev_camera_id != 'camera_4' \
+            and camera_id != 'camera_4' \
+            and prev_camera_id != 'camera_3' \
+            and camera_id != 'camera_3' \
+            and traj_idx == prev_traj_idx \
+            and timestamp - prev_time < 0.010:
 
-#     flattend_detections = list(detections.values())
-#     flattend_detections = np.concatenate(flattend_detections, axis=0)
-#     # sort based on third column (time) from small to large
-#     flattend_detections = flattend_detections[flattend_detections[:, 2].argsort()]
-#     flattend_detections[:,2] -= flattend_detections[0, 2]
+            prev_camparam = cam_params_dict[prev_camera_id]
+            camparam = cam_params_dict[camera_id]
+
+            p = triangulate(np.array(prev_uv), np.array([u, v]), prev_camparam, camparam)
+            repro_error = np.linalg.norm(camparam.proj2img(p) - np.array([u, v]))
+
+            loc_error = np.linalg.norm(p - np.array(points3d[-1][2:5])) if len(points3d) > 0  else 0
+
+            loc_error = np.inf if prev_traj_idx != traj_idx else loc_error
+
+            if repro_error < 120:
+                points3d.append([traj_idx, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
+
+            if DEBUG:
+                pass
+
+        prev_time = timestamp
+        prev_uv = [u, v]
+        prev_camera_id = camera_id
+        prev_traj_idx = traj_idx
     
-#     # plot the 3d trajectory
-#     fig = plt.figure()
-#     ax = fig.add_subplot(111, projection='3d')
-#     for traj_idx in range(max_traj_idx):
-#         dets = flattend_detections[flattend_detections[:, 0] == traj_idx]
-
-#         for i in range(1, 7):
-#             dets_i = dets[dets[:, 3] == i]
-#             ax.plot(dets_i[:, 4], dets_i[:, 5], dets_i[:, 2])
+    return np.array(points3d)
 
 
-#         ax.plot(traj[:, 4], traj[:, 5], traj[:, 2])
-#         ax.set_xlabel('x')
-#         ax.set_ylabel('y')
-#         ax.set_zlabel('time')
-#         plt.show()
+                
+
+
+def generate_3d_dataset():
+    detection_filename = 'data/real/detections_tennis/data7_2024-12-09-18-21-24.json'
+    with open(detection_filename, 'r') as f:
+        detections = json.load(f)
+    
+    max_traj_check = []
+    for camera_id, points in detections.items():
+        points = np.array(points)
+        max_traj_check.append(np.max(points[:, 0]).astype(int))
+
+    print(f'max_traj_check = {max_traj_check}')
+    assert len(set(max_traj_check)) == 1, f'max_traj_check = {max_traj_check}'
+
+    max_traj_idx = max_traj_check[0]
+
+    flattend_detections = []
+    start_time = detections['camera_1'][0][2]
+    for camera_id, points in detections.items():
+       for p in points:
+            p[3] = camera_id
+            p[2] -= start_time
+            flattend_detections.append(p)
+
+    flattend_detections.sort(key=lambda x: x[2])
+    points = detections2points3d(flattend_detections, detection_filename)
+
+    #plot
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    for i in range(30):
+        mask = points[:, 0] == i
+        ax.plot(points[mask, 2], points[mask, 3], points[mask, 4])
+    # ax.scatter(points[:,2], points[:,3], points[:,4], s=1)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    set_axes_equal(ax)
+
+    plt.show()
 
    
 def start_app():
@@ -358,4 +447,4 @@ def start_app():
 if __name__ == "__main__":
     # start_app()
 
-    # view_cleaned_trajectory()
+    generate_3d_dataset()
