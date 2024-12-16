@@ -47,6 +47,23 @@ global_bc_dec_0_bias = global_bc_params['dec.0.bias']
 global_bc_dec_2_weight = global_bc_params['dec.2.weight']
 global_bc_dec_2_bias = global_bc_params['dec.2.bias']
 
+@numba.jit(nopython=True, cache=True)
+def predict(p0, v0, w0, t, N):
+    points = np.zeros((N, 3), dtype=DTYPE)
+    dt = t/N
+    for i in range(N):
+        if p0[2] < 0 and v0[2] < 0:
+            v0, w0 = bounce_forward(v0, w0)
+        acc = aero_forward(v0, w0)
+        
+        v0 = v0 + acc*dt
+        p0 = p0 + v0*dt
+        points[i,:] = p0
+    
+    return points
+
+
+
 
 @numba.jit(nopython=True, cache=True)
 def gs2d(v2d, w2d):
@@ -281,7 +298,7 @@ def _bounce_jacobian(recode_weight, recode_bias, layer1_weight, layer1_bias,
 
 
    
-
+@numba.jit(nopython=True, cache=True)
 def bounce_jacobian(v,w):
     return _bounce_jacobian(global_bc_recode_weight, global_bc_recode_bias,
                             global_bc_layer1_weight, global_bc_layer1_bias,
@@ -468,8 +485,8 @@ def _aero_jacobian(recode_weight, recode_bias, layer1_weight, layer1_bias,
     J_r = J_rvw[:9,:]
     J_y3_y2 = R # 3x3
     J_y3_r = np.stack((np.concatenate((y2, np.zeros(3,dtype=DTYPE), np.zeros(3,dtype=DTYPE))), 
-                             np.concatenate((np.zeros(3,dtype=DTYPE), y2, np.zeros(3,dtype=DTYPE))),
-                               np.concatenate((np.zeros(3,dtype=DTYPE), np.zeros(3,dtype=DTYPE), y2)),)) # 3x9
+                        np.concatenate((np.zeros(3,dtype=DTYPE), y2, np.zeros(3,dtype=DTYPE))),
+                        np.concatenate((np.zeros(3,dtype=DTYPE), np.zeros(3,dtype=DTYPE), y2)),)) # 3x9
     J_y3 = J_y3_r @ J_r + J_y3_y2 @ J_y2
 
     return J_y3
@@ -483,20 +500,22 @@ def pos_jacobian(l1, v1, l2, t1, t2):
     return -np.eye(3, dtype=DTYPE), np.eye(3, dtype=DTYPE) * (t1-t2), np.eye(3, dtype=DTYPE)
 
 @numba.jit(nopython=True, cache=True)
-def vw_error(v1, w1, v2, w2, t1, t2):
+def vw_error(p1, v1, w1, v2, w2, t1, t2, z0):
+    if p1[2] < z0 and v1[2] < DTYPE(0.0):
+        v1, w1 = bounce_forward(v1, w1)
     acc_v = aero_forward(v1, w1)
     error_v = v2 - (v1 + acc_v*(t2-t1))
     error_w = w2 - w1
     return np.concatenate((error_v, error_w))
 
 @numba.jit(nopython=True, cache=True)
-def vw_jacobian(v1, w1, v2, w2, t1, t2):
+def vw_jacobian(p1, v1, w1, v2, w2, t1, t2):
     J_acc_v1w1 = aero_jacobian(v1, w1)
 
-    J_ev_v1 = -np.eye(3, dtype=DTYPE) + J_acc_v1w1[:,:3] * (t1-t2) 
+    J_ev_v1 = -np.eye(3, dtype=DTYPE) - J_acc_v1w1[:,:3] * (t2-t1) 
     J_ew_v1 = np.zeros((3,3), dtype=DTYPE)
 
-    J_ev_w1 =   J_acc_v1w1[:,3:] * (t1-t2)
+    J_ev_w1 =   -J_acc_v1w1[:,3:] * (t2-t1)
     J_ew_w1 = -np.eye(3, dtype=DTYPE)
 
     J_ev_v2 = np.eye(3, dtype=DTYPE)
@@ -505,8 +524,23 @@ def vw_jacobian(v1, w1, v2, w2, t1, t2):
     J_ev_w2 = np.zeros((3,3), dtype=DTYPE)
     J_ew_w2 = np.eye(3, dtype=DTYPE)
 
-    return [np.concatenate((J_ev_v1, J_ew_v1),axis=0),
-            np.concatenate((J_ev_w1, J_ew_w1),axis=0),
+    # bounce
+    if p1[2] < DTYPE(0.0) and v1[2] < DTYPE(0.0):
+        J_v1_v1, J_w1_v1, J_v1_w1, J_w1_w1 = bounce_jacobian(v1, w1)
+        J_ev_v1_b = J_ev_v1 @ J_v1_v1 + J_ev_w1 @ J_w1_v1
+        J_ew_v1_b =                             -J_w1_v1
+        J_ev_w1_b = J_ev_v1 @ J_v1_w1 + J_ev_w1 @ J_w1_w1
+        J_ew_w1_b = J_ew_v1 @ J_v1_w1            -J_w1_w1
+
+    else:
+        J_ev_v1_b = J_ev_v1
+        J_ew_v1_b = J_ew_v1
+        J_ev_w1_b = J_ev_w1
+        J_ew_w1_b = J_ew_w1
+
+    return [np.zeros((6,3), dtype=DTYPE), # no gradient for p1
+            np.concatenate((J_ev_v1_b, J_ew_v1_b),axis=0),
+            np.concatenate((J_ev_w1_b, J_ew_w1_b),axis=0),
             np.concatenate((J_ev_v2, J_ew_v2),axis=0),
             np.concatenate((J_ev_w2, J_ew_w2),axis=0)]
 
@@ -539,11 +573,11 @@ class PositionFactor(gtsam.CustomFactor):
 
 
 class VWFactor(gtsam.CustomFactor):
-    def __init__(self, noiseModel,key1, key2, key3, key4, t1, t2):
+    def __init__(self, noiseModel,key1, key2, key3, key4, key5, t1, t2, z0):
         def error_function(self,values: gtsam.Values, jacobians: Optional[List[np.ndarray]]) -> float:
-            v1, w1, v2, w2 =  values.atVector(key1), values.atVector(key2), values.atVector(key3), values.atVector(key4)
-            error = vw_error(v1,w1,v2,w2,t1,t2)
+            p1, v1, w1, v2, w2 =  values.atVector(key1), values.atVector(key2), values.atVector(key3), values.atVector(key4), values.atVector(key5)
+            error = vw_error(p1, v1,w1,v2,w2,t1,t2, z0)
             if jacobians is not None:
-                assign_jacobians(jacobians,vw_jacobian(v1,w1,v2,w2,t1,t2))
+                assign_jacobians(jacobians,vw_jacobian(p1, v1, w1,v2,w2,t1,t2))
             return error
-        super().__init__(noiseModel, [key1, key2, key3, key4], error_function) # may change to partial
+        super().__init__(noiseModel, [key1, key2, key3, key4, key5], error_function) # may change to partial
