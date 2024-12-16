@@ -430,12 +430,12 @@ def generate_3d_dataset():
         mask = points[:, 0] == i
         ax.plot(points[mask, 2], points[mask, 3], points[mask, 4])
     # ax.scatter(points[:,2], points[:,3], points[:,4], s=1)
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    set_axes_equal(ax)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        set_axes_equal(ax)
 
-    plt.show()
+        plt.show()
 
    
 def start_app():

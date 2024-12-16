@@ -231,8 +231,9 @@ class AeroModel(nn.Module):
         h2  = self.layer2(h)*h + h
         y = self.dec(h2)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
+        
 
-     
+
         y = y + self.bias #+  torch.tensor([[0.0, 0.0, -9.81]]).to(v.device)
         y = y.reshape(shapes)
     
@@ -293,12 +294,12 @@ def autoregr_MNN(data, model, est, cfg):
     w0 = data[:, 0:1, 8:11]
 
 
-    import time
+    # import time
 
     if est is not None:
-        time_start = time.time()
+        # time_start = time.time()
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
-        print('inference',time.time() - time_start)
+        # print('inference',time.time() - time_start)
         # failed to estimate
         if p0 is None:
             return None
@@ -306,7 +307,7 @@ def autoregr_MNN(data, model, est, cfg):
 
     # raise
     d_tN = torch.diff(tN, dim=1)
-    time_start = time.time()
+    # time_start = time.time()
     pN_est = [p0]
     for i in range(1, data.shape[1]):
         dt = d_tN[:, i-1:i, :]
@@ -316,5 +317,5 @@ def autoregr_MNN(data, model, est, cfg):
         pN_est.append(p0)
 
     pN_est = torch.cat(pN_est, dim=1)
-    print('regress',time.time() - time_start)
+    # print('regress',time.time() - time_start)
     return pN_est

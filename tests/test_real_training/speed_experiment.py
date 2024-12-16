@@ -55,14 +55,14 @@ def matrix_speed():
 
 def get_original_model(compile=True):
     mnn = MNN(z0=0.010)
-    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/model_MNN.pth'))
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20/model_MNN.pth'))
     mnn.eval()
     if compile:
         mnn.compile()
     mnn.to('cuda')
 
     mnn_est = OptimLayer(mnn, size=80, allow_grad=False, damping=0.1, max_iterations=30)
-    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/est_OptimLayer.pth'))
+    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20/est_OptimLayer.pth'))
     mnn_est.eval()
     mnn_est.to('cuda')
     mnn_est.model = mnn
@@ -82,7 +82,7 @@ def get_tensorRT_model():
 
 def get_np_params():
     mnn = MNN(z0=0.010)
-    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/model_MNN.pth'))
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20/model_MNN.pth'))
     
     aero_model = mnn.aero_layer
     bounce_model = mnn.bc_layer
@@ -125,6 +125,7 @@ global_layer1_weight = global_aero_params['layer1.0.weight']
 global_layer1_bias = global_aero_params['layer1.0.bias']
 global_layer2_weight = global_aero_params['layer2.0.weight']
 global_layer2_bias = global_aero_params['layer2.0.bias']
+
 global_dec_0_weight = global_aero_params['dec.0.weight']
 global_dec_0_bias = global_aero_params['dec.0.bias']
 global_dec_2_weight = global_aero_params['dec.2.weight']
@@ -206,7 +207,7 @@ class TestCases:
         mnn, mnn_est, autoregr_MNN = get_original_model(compile=False)
         aero_params, _ = get_np_params()
 
-        v = torch.rand(1,3).cuda()*10
+        v = torch.rand(1,3).cuda()*30
         w = torch.rand(1,3).cuda()*10
 
         torch_time = time.time()
@@ -215,13 +216,13 @@ class TestCases:
         print('Torch time:', time.time() - torch_time)
         y_torch = y_torch.cpu().detach().numpy()
 
-        
+        num_loop = 1
 
 
         v = v.reshape(-1).cpu().detach().numpy().astype(DTYPE)
         w =  w.reshape(-1).cpu().detach().numpy().astype(DTYPE)
         jitted_time = time.time()
-        for _ in range(100):
+        for _ in range(num_loop):
             y_np_jitted = _aero_forward(global_recode_weight, global_recode_bias,
                             global_layer1_weight, global_layer1_bias,
                             global_layer2_weight, global_layer2_bias,
@@ -233,24 +234,24 @@ class TestCases:
    
         y_phy = phy(v, w)
         phy_time = time.time()
-        for _ in range(100):
+        for _ in range(num_loop):
             y_phy = phy(v, w)
         print('Physics time:', time.time() - phy_time)
 
 
         y_global = aero_forward(np.random.rand(3).astype(DTYPE), np.random.rand(3).astype(DTYPE))
         global_jitted_time = time.time()
-        for _ in range(100):
+        for _ in range(num_loop):
             y_global = aero_forward(v.reshape(-1),w.reshape(-1))
         print('Global jitted time:', time.time() - global_jitted_time)
 
 
 
-        # print('Torch:', y_torch)
+        print('Torch:', y_torch)
         # print('Numpy:', y_np)
-        # print('Jitted:', y_np_jitted)
-        # # print('Physics:', y_phy)
-        # print('Global Jitted:', y_global)
+        print('Jitted:', y_np_jitted)
+        # print('Physics:', y_phy)
+        print('Global Jitted:', y_global)
 
     @staticmethod
     def test_jacobian():
@@ -298,6 +299,8 @@ class TestCases:
         r_idx, c_idx = np.unravel_index(idx, error.shape)  # Convert to 2D index
         max_error = error.max()
         print('Torch:')
+        print(jacobian_torch)
+        print('Twin:')
         print(jacobian_twin)
         print('Numpy:')
         print(jacobian_np)
@@ -394,8 +397,8 @@ def validate_3d_plot(cfg):
 
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
-    # TestCases.test_aero_forward()
-    TestCases.test_jacobian()
+    TestCases.test_aero_forward()
+    # TestCases.test_jacobian()
     # TestCases.test_gs_gradient()
 
     

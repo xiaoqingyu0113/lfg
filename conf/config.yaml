@@ -1,7 +1,7 @@
 defaults:
   - model: traj/mnn
   - estimator: optim_layer
-  - dataset: real/mix
+  - dataset: real/tennis
   - _self_
 
 hydra:
@@ -10,16 +10,10 @@ hydra:
     dir: outputs/${now:%Y-%m-%d}/${now:%H-%M-%S}
 
 task:
-  generate_data: true
+  generate_data: False
   train: True
 
 
-camera:
-  folder: conf/camera
-  cam_ids:
-    - '22276213'
-    - '22276209'
-    - '22276216'
 
 
   

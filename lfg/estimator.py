@@ -13,6 +13,12 @@ class OptimLayer(nn.Module):
         for key, value in kwargs.items():
             setattr(self, key, value)
 
+        # pingpong
+        # p_noise = 0.010
+        # v_noise = 0.001
+        # w_noise = 0.1
+
+        # tennis
         p_noise = 0.010
         v_noise = 0.001
         w_noise = 0.1

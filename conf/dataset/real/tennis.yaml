@@ -1,0 +1,10 @@
+name: real_tennis
+folder: data/real/tennis_triangulated
+
+camera_data: none
+trajectory_data: none
+
+batch_size: 32
+interpolate: 500
+z0: 0.076 # bounce of court
+

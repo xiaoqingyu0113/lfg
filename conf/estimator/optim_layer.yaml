@@ -3,7 +3,7 @@ name: OptimLayer
 args: [none]
 
 kwargs:
-  size: 80
+  size: 130 #80 for pingpong
   allow_grad: false
-  damping: 0.1
+  damping: 0.1 # 0.1 for pingpong
   max_iterations: 30

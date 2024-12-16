@@ -8,7 +8,7 @@ args:
   - none
 kwargs:
   bc_dims: none
-  z0: 0.010
+  z0: 0.076 #0.010
 
 
 # data augmentation  
@@ -22,7 +22,7 @@ num_epochs: 300
 warm_start: true
 
 ## lr scheduler
-lr_init: 1e-3
+lr_init: 3e-4
 
 
 training_data_split: 0.8
