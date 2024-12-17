@@ -1,5 +1,5 @@
 name: real_tennis
-folder: data/real/tennis_triangulated
+folder: data/real/tennis_no_1_6
 
 camera_data: none
 trajectory_data: none

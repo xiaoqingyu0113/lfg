@@ -36,7 +36,7 @@ def interpolate_data( data: np.ndarray, interpolate: int) -> np.ndarray:
         tmin = data_tmp_i[0, 1]
         t_avg_spacing = (tmax - tmin) / interpolate
         t_random_noise = np.random.uniform(-t_avg_spacing/2.5, t_avg_spacing/2.5, interpolate)
-        t = np.linspace(tmin, tmax, interpolate) + t_random_noise
+        t = np.linspace(tmin, tmax, interpolate) # + t_random_noise
         t[0] = tmin
         t[-1] = tmax
         data_i = interp_f(t)
@@ -149,7 +149,7 @@ def test_gtsam(data):
             # break
             fig.savefig(f'plots/gtsam_no_1_6_interp/{i:04d}.png')
 
-
+    plt.show()
 def get_data(i):
     import glob
     data_files = list(glob.glob('data/real/tennis_no_1_6/*.txt'))
@@ -162,4 +162,4 @@ def get_data(i):
     return data
 
 # theseus_results(get_data(0))
-test_gtsam(get_data(3))
+test_gtsam(get_data(0))

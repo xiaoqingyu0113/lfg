@@ -80,8 +80,7 @@ def detections2points3d(detections, detection_filename):
     return np.array(points3d)
 
 
-def generate_3d_dataset():
-    detection_filename = 'data/real/detections_tennis/data7_2024-12-09-18-21-24.json'
+def generate_3d_dataset(detection_filename):
     with open(detection_filename, 'r') as f:
         detections = json.load(f)
     
@@ -197,5 +196,8 @@ def load_trajectory():
     print(f'lowest_z = {lowest_z}')
     print(f"mean = {np.mean(lowest_z)}")
 
-generate_3d_dataset()
+import glob
+detection_file = glob.glob('data/real/detections_tennis/data1*.json')[0]
+
+generate_3d_dataset(detection_file)
 # load_trajectory()

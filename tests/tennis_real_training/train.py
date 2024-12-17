@@ -85,6 +85,7 @@ class RealTrajectoryDataset(Dataset):
         '''
         data = self.make_idx_continuous(data)
         data = self.interpolate_data(data, self.interpolate)
+        # data = data[None, :self.interpolate, :]
 
         return data
     
