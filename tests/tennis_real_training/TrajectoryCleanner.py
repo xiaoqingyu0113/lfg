@@ -49,10 +49,10 @@ def detections2points3d(detections, detection_filename):
         # triangulate the 3d point
         if prev_time is not None \
             and prev_camera_id != camera_id \
-            and prev_camera_id != 'camera_4' \
-            and camera_id != 'camera_4' \
-            and prev_camera_id != 'camera_3' \
-            and camera_id != 'camera_3' \
+            and prev_camera_id != 'camera_1' \
+            and camera_id != 'camera_1' \
+            and prev_camera_id != 'camera_6' \
+            and camera_id != 'camera_6' \
             and traj_idx == prev_traj_idx \
             and timestamp - prev_time < 0.010:
 
@@ -115,7 +115,7 @@ def generate_3d_dataset():
     traj_points = points[mask, 1:5]
     t, x,y, z = traj_points[:,0], traj_points[:,1], traj_points[:,2], traj_points[:,3]
     lineplot = ax.plot(x,y,z)[0]
-    scatter = ax.scatter(x,y,z, s=10, c='b')
+    scatter = ax.scatter(x,y,z, s=3, c='b')
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
@@ -153,8 +153,8 @@ def generate_3d_dataset():
             # save the points [trajectory_idx, timestamp, x, y, z, 0,0,0,1,0,0]
             detection_filename_ = detection_filename.split('/')[-1].split('.')[0]
             ppp = np.column_stack((np.ones_like(t)*current_traj_idx, t, x, y, z, np.zeros_like(t), np.zeros_like(t), np.zeros_like(t), np.ones_like(t), np.zeros_like(t), np.zeros_like(t)))
-            np.savetxt(f'data/real/tennis_triangulated/{detection_filename_}_{current_traj_idx:02d}.txt', ppp, fmt='%f')
-            print(f'Saved to data/real/tennis_triangulated/{detection_filename_}_{current_traj_idx:02d}.txt')
+            np.savetxt(f'data/real/tennis_no_1_6/{detection_filename_}_{current_traj_idx:02d}.txt', ppp, fmt='%f')
+            print(f'Saved to data/real/tennis_no_1_6/{detection_filename_}_{current_traj_idx:02d}.txt')
             
         if 'right' == event.key:
             current_traj_idx = min(current_traj_idx + 1, max_traj_idx)
@@ -197,5 +197,5 @@ def load_trajectory():
     print(f'lowest_z = {lowest_z}')
     print(f"mean = {np.mean(lowest_z)}")
 
-# generate_3d_dataset()
-load_trajectory()
+generate_3d_dataset()
+# load_trajectory()

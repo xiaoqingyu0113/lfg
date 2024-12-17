@@ -18,10 +18,17 @@ def copy_folder_from_server(server, user, remote_folder_path, local_destination_
     except subprocess.CalledProcessError as e:
         print(f"Error occurred: {e.stderr.decode()}")
 
-# Example usage
-server = "v-ger.cc.gatech.edu"
-user = "qxiao33"
-remote_path = "~/lfg/logdir/traj_train/MNN/pos/real/OptimLayer/run44"
-local_path = "logdir/traj_train/MNN/pos/real/OptimLayer/run44/"
 
-copy_folder_from_server(server, user, remote_path, local_path)
+# server = "v-ger.cc.gatech.edu"
+# user = "qxiao33"
+# remote_path = "~/lfg/logdir/traj_train/MNN/pos/real/OptimLayer/run44"
+# local_path = "logdir/traj_train/MNN/pos/real/OptimLayer/run44/"
+
+# copy_folder_from_server(server, user, remote_path, local_path)
+
+
+
+copy_folder_from_server('172.26.255.60',
+                         'qingyu', 
+                         '~/lfg/logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20', 
+                         'logdir/traj_train/MNN/pos/real_tennis/OptimLayer/')

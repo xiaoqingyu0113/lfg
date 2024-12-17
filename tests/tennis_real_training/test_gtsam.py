@@ -106,7 +106,7 @@ def test_gtsam(data):
         else:
             t_prev = data[i-1, 1]
             graph.push_back(PositionFactor(pPriorNoise, L(i-1), V(i-1), L(i), t_prev, t))
-            graph.push_back(VWFactor(vwNoise,L(i-1), V(i-1), W(i-1), V(i), W(i), t_prev, t, 0.150))
+            graph.push_back(VWFactor(vwNoise,L(i-1), V(i-1), W(i-1), V(i), W(i), t_prev, t, 0.200))
 
             if optim_estimate is None:
                 initial_estimate.insert(V(i), 1e-3*np.random.rand(3).astype(DTYPE))
@@ -118,14 +118,14 @@ def test_gtsam(data):
                 initial_estimate.insert(W(i), w_prev)
 
         if i > minimum_graph_size:
-            if not start_time:
-                start_time = time.time()
+            start_time = time.time()
             isam2.update(graph, initial_estimate)
             optim_estimate = isam2.calculateEstimate()
+            print(f'i={i}, inference time = {time.time() - start_time}')
             graph.resize(0)
             initial_estimate.clear()
 
-        if i >= 120:
+        if i >= 80:
             est = isam2.calculateEstimate()
         
             p = np.array([est.atVector(L(ii)) for ii in range(i)])
@@ -133,7 +133,6 @@ def test_gtsam(data):
             v_curr = est.atVector(V(i))
             w_curr = est.atVector(W(i))
 
-            print(p_curr, v_curr, w_curr)
             points = predict(p_curr, v_curr, w_curr, 3.0, 300)
 
 
@@ -141,18 +140,19 @@ def test_gtsam(data):
             ax.scatter(data[:, 2], data[:, 3], data[:, 4], c='b',s=0.5)
             ax.plot(points[:, 0], points[:, 1], points[:, 2], c='g', linewidth=3)
             ax.plot(p[:, 0], p[:, 1], p[:, 2], c='y', linewidth=3)
+            ax.scatter(p_curr[0], p_curr[1], p_curr[2], c='r', s=20)
             axes_equal(ax)
             ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
 
 
             # plt.show()
             # break
-            fig.savefig(f'plots/gtsam/{i:04d}.png')
+            fig.savefig(f'plots/gtsam_no_1_6_interp/{i:04d}.png')
 
 
 def get_data(i):
     import glob
-    data_files = list(glob.glob('data/real/tennis_triangulated/*.txt'))
+    data_files = list(glob.glob('data/real/tennis_no_1_6/*.txt'))
     data_files.sort()
 
     selected_file = data_files[i]
@@ -162,4 +162,4 @@ def get_data(i):
     return data
 
 # theseus_results(get_data(0))
-test_gtsam(get_data(0))
+test_gtsam(get_data(3))
