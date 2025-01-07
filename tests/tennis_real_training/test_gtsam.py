@@ -125,7 +125,7 @@ def test_gtsam(data):
             graph.resize(0)
             initial_estimate.clear()
 
-        if i >= 80:
+        if i > 120:
             est = isam2.calculateEstimate()
         
             p = np.array([est.atVector(L(ii)) for ii in range(i)])
@@ -137,19 +137,20 @@ def test_gtsam(data):
 
 
             ax.clear()
-            ax.scatter(data[:, 2], data[:, 3], data[:, 4], c='b',s=0.5)
+            ax.plot(data[:, 2], data[:, 3], data[:, 4], c='b')
             ax.plot(points[:, 0], points[:, 1], points[:, 2], c='g', linewidth=3)
             ax.plot(p[:, 0], p[:, 1], p[:, 2], c='y', linewidth=3)
             ax.scatter(p_curr[0], p_curr[1], p_curr[2], c='r', s=20)
-            axes_equal(ax)
+            # axes_equal(ax)
+            ax.set_xlim(-10, 25); ax.set_ylim(-20, 15); ax.set_zlim(-15, 20)
             ax.set_xlabel('X'); ax.set_ylabel('Y'); ax.set_zlabel('Z')
 
 
-            # plt.show()
-            # break
+            plt.show()
+            break
             fig.savefig(f'plots/gtsam_no_1_6_interp/{i:04d}.png')
 
-    plt.show()
+    # plt.show()
 def get_data(i):
     import glob
     data_files = list(glob.glob('data/real/tennis_no_1_6/*.txt'))
@@ -162,4 +163,4 @@ def get_data(i):
     return data
 
 # theseus_results(get_data(0))
-test_gtsam(get_data(0))
+test_gtsam(get_data(2))
