@@ -4,6 +4,7 @@ from scipy.optimize import least_squares
 import yaml
 from typing import List, Dict
 from dataclasses import dataclass, field
+import os 
 
 @dataclass
 class KeyPoints:
@@ -15,10 +16,25 @@ class KeyPoints:
         self.all_points.update({self.point_type: self.selected_point})
 
 def select_points(img='conf/camera/22495525_calibration_Dec13.jpg'):
+
+    names = img.split('.')[0].split('/')[-1].split('_')
+    serial, _, data = names
+    keypoints_filename = f'conf/camera/{serial}_courtpoints_{data}.yaml'
+
+    if os.path.exists(keypoints_filename):
+        print('keypoints already exists. Load the file to update the points')
+        keypoints_dict = yaml.load(open(keypoints_filename), Loader=yaml.FullLoader)
+        keypoints = KeyPoints(all_points=keypoints_dict)
+    else:
+        keypoints = KeyPoints()
     # draw a line by clicking two points on the image
     image = cv2.imread(img)
     
-    keypoints = KeyPoints()
+    def draw_cross(img, x, y, color=(0, 0, 255), size=5):
+        cv2.line(img, (x - size, y), (x + size, y), color, 1)
+        cv2.line(img, (x, y - size), (x, y + size), color, 1)
+        cv2.circle(img, (x, y), 2, color, -1)
+    
 
     def draw_points(event, x, y, flags, param):
         img_copy = image.copy()
@@ -28,7 +44,9 @@ def select_points(img='conf/camera/22495525_calibration_Dec13.jpg'):
             if keypoints.point_type != 'none':
                 keypoints.update()
         if event == cv2.EVENT_MOUSEMOVE:
-            cv2.circle(img_copy, (x, y), 5, (0, 0, 255), -1)
+            # cv2.circle(img_copy, (x, y), 5, (0, 0, 255), -1)
+            draw_cross(img_copy, x, y)
+            cv2.putText(img_copy, keypoints.point_type, (x, y), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2, cv2.LINE_AA)
         
         if event == cv2.EVENT_RBUTTONDOWN:
             # remove the last point
@@ -37,7 +55,8 @@ def select_points(img='conf/camera/22495525_calibration_Dec13.jpg'):
 
         # draw all points
         for k, v in keypoints.all_points.items():
-            cv2.circle(img_copy, (v[0], v[1]), 5, (255, 0, 0), -1)
+            # cv2.circle(img_copy, (v[0], v[1]), 5, (255, 0, 0), 1)
+            draw_cross(img_copy, v[0], v[1])
             cv2.putText(img_copy, k, (v[0], v[1]), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 0, 0), 2, cv2.LINE_AA)
 
         cv2.imshow('image', img_copy)
@@ -55,9 +74,7 @@ def select_points(img='conf/camera/22495525_calibration_Dec13.jpg'):
     cv2.destroyAllWindows()
 
     #remove .yaml from the image name
-    names = img.split('.')[0].split('/')[-1].split('_')
-    serial, _, data = names
-    keypoints_filename = f'conf/camera/{serial}_courtpoints_{data}.yaml'
+    
     print('saved to ', keypoints_filename )
     with open(keypoints_filename, 'w') as f:
         yaml.dump(keypoints.all_points, f)
@@ -85,6 +102,9 @@ def get_points_world():
 
 # compute extrinsic parameters based on the selected points
 def compute_extrinsic_parameters(all_points, K):
+    '''
+    save K, R, T to a yaml file
+    '''
     
     world_point_dict = get_points_world()
     world_points = []
@@ -109,6 +129,7 @@ def compute_extrinsic_parameters(all_points, K):
 
     print('R', R)
     print('T', T)
+    
     return R, T
 
 def draw_courtlines(imgname, K, R, T):
@@ -165,9 +186,24 @@ def draw_courtlines(imgname, K, R, T):
 
 if __name__ == "__main__":
 
-    # select_points('conf/camera/22495525_calibration_Dec13.jpg')
-    img = 'conf/camera/22495525_calibration_Dec13.jpg'
-    params = yaml.load(open('conf/camera/22495525_calibration_Dec13.yaml'), Loader=yaml.FullLoader)
+
+    folder = 'conf/camera'
+    serial = '23045007'
+    date = 'Dec13'
+
+    img = f'{folder}/{serial}_calibration_{date}.jpg'
+    select_points(img)
+    params = yaml.load(open(f'{folder}/{serial}_calibration_{date}.yaml'), Loader=yaml.FullLoader)
     K = np.array(params['camera_matrix']['data']).reshape(3, 3).astype(np.float32)
-    R, T = compute_extrinsic_parameters(yaml.load(open('conf/camera/22495525_courtpoints_Dec13.yaml'), Loader=yaml.FullLoader), K)
+    R, T = compute_extrinsic_parameters(yaml.load(open(f'{folder}/{serial}_courtpoints_{date}.yaml'), Loader=yaml.FullLoader), K)
+
+    with open(f'{folder}/{serial}_calibration_{date}_pose_kpts.yaml', 'w') as f:
+        new_params = {
+            'camera_matrix': {'rows': 3, 'cols': 3, 'data': K.flatten().tolist()},
+            'R_cam_world': R.flatten().tolist(),
+            't_world_cam': T.flatten().tolist()
+        }
+        yaml.dump(new_params, f)
+
+    
     draw_courtlines(img, K, R, T)
