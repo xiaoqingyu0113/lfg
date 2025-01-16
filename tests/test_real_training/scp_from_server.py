@@ -28,7 +28,7 @@ def copy_folder_from_server(server, user, remote_folder_path, local_destination_
 
 
 
-copy_folder_from_server('172.26.255.60',
-                         'qingyu', 
+copy_folder_from_server('v-ger.cc.gatech.edu',
+                         'qxiao33', 
                          '~/lfg/logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20', 
                          'logdir/traj_train/MNN/pos/real_tennis/OptimLayer/')

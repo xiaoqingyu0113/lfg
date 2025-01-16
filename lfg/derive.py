@@ -1,15 +1,23 @@
+
+import os
 import numpy as np
+
+DTYPE = np.float64
+WEIGHTS_DIR = os.path.join(os.path.dirname(__file__),
+                            '..',
+                            'logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run40/')
+
+
 import numba
 import torch
 from .model_traj.mnn import MNN
 import gtsam
 from typing import List, Optional
 
-DTYPE = np.float64
 
 # encode parameters in the jitted functions
 mnn = MNN(z0=0.010)
-mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run20/model_MNN.pth'))
+mnn.load_state_dict(torch.load(WEIGHTS_DIR + '/model_MNN.pth'))
 aero_model = mnn.aero_layer
 global_aero_params = {}
 global_bc_params = {}

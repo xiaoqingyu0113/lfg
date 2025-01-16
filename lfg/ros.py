@@ -40,7 +40,7 @@ class LFG:
             config_folder = os.path.join(CURRENT_DIR, '../conf/camera')
             camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
             date = 'Dec13'
-            cam_params = [read_cam_calibration(f'{config_folder}/{cname}_calibration_{date}.yaml') for cname in camera_names]
+            cam_params = [read_cam_calibration(f'{config_folder}/{cname}_calibration_{date}_pose_kpts.yaml') for cname in camera_names]
             cam_params_dict =  {'camera_'+str(i+1):cam_params[i] for i in range(6)}
 
         self.cam_params_dict = cam_params_dict
@@ -73,10 +73,6 @@ class LFG:
         points_3d = None
         if self.prev_time is not None \
             and self.prev_camera_id != camera_id \
-            and self.prev_camera_id != 'camera_1' \
-            and camera_id != 'camera_1' \
-            and self.prev_camera_id != 'camera_6' \
-            and camera_id != 'camera_6' \
             and timestamp - self.prev_time < 0.010:
 
             prev_camparam = self.cam_params_dict[self.prev_camera_id]
@@ -127,7 +123,7 @@ class LFG:
             self.initial_estimate.insert(V(self.gid), 1e-3*np.random.rand(3).astype(DTYPE))
         else:
             self.graph.push_back(PositionFactor(self.pPriorNoise, L(self.gid-1), V(self.gid-1), L(self.gid), 0.0, t_interp-self.prev_interp_time))
-            self.graph.push_back(VWFactor(self.vwNoise,L(self.gid-1), V(self.gid-1), W(self.gid-1), V(self.gid), W(self.gid), 0.0, t_interp - self.prev_interp_time, 0.200))
+            self.graph.push_back(VWFactor(self.vwNoise,L(self.gid-1), V(self.gid-1), W(self.gid-1), V(self.gid), W(self.gid), 0.0, t_interp - self.prev_interp_time, 0.076))
 
             if self.optim_estimate is None:
                 self.initial_estimate.insert(V(self.gid), 1e-3*np.random.rand(3).astype(DTYPE))
