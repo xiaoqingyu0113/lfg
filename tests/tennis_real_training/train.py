@@ -108,12 +108,15 @@ class RealTrajectoryDataset(Dataset):
         for i in range(int(data_tmp[-1][0])+1):
             mask = data_tmp[:, 0].astype(int) == i
             data_tmp_i = data_tmp[mask, :]
+            print(data_tmp_i.shape)
             interp_f = interp1d(data_tmp_i[:, 1], data_tmp_i, axis=0)
             tmax = data_tmp_i[-1, 1]
             tmin = data_tmp_i[0, 1]
             t_avg_spacing = (tmax - tmin) / interpolate
             t_random_noise = np.random.uniform(-t_avg_spacing/2.5, t_avg_spacing/2.5, interpolate)
             t = np.linspace(tmin, tmax, interpolate) + t_random_noise
+
+            # print(f"tmin: {tmin}, tmax: {tmax}, interpolate: {interpolate}, t_avg_spacing: {t_avg_spacing}")
             t[0] = tmin
             t[-1] = tmax
             data_i = interp_f(t)
@@ -207,12 +210,32 @@ def get_model(cfg):
 def compute_loss(model, est, autoregr, data, criterion,cfg):
     pN_est = autoregr(data, model, est, cfg)
 
+    
+
     # failed to estimate due to estimator
     if pN_est is None:
         return None
     
+    # none nan batches
+    for b in range(pN_est.shape[0]):
+        if torch.isnan(pN_est[b]).any():
+            p_tmp = pN_est[b].clone()
+            p_tmp =p_tmp.detach().cpu().numpy()
+            np.savetxt(f'tmp/failed_{b}.txt', p_tmp)
+        
+        #value too large
+        if torch.abs(pN_est[b]).max() > 1e5:
+            p_tmp = pN_est[b].clone()
+            p_tmp =p_tmp.detach().cpu().numpy()
+            np.savetxt(f'tmp/exlimit_{b}.txt', p_tmp)
 
-    pN_gt = data[:, :,2:5]
+    # mask out branches with nan and large values
+    mask = torch.isnan(pN_est).any(dim=2).any(dim=1) | (torch.abs(pN_est).max(dim=2).values > 1e5).any(dim=1)
+   
+    pN_est = pN_est[~mask]
+    pN_gt = data[~mask, :,2:5]
+
+    # pN_gt = data[:, :,2:5]
 
     loss = 0.0
 
@@ -380,7 +403,7 @@ def train_loop(cfg):
                         print(f"Zeroing gradients for {name} due to inf or NaN values.")
                         param.grad[inf_or_nan_mask] = 0.0  # Zero out bad gradients
 
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 2.0, norm_type = 2.0, error_if_nonfinite=True)
+            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0, norm_type = 2.0, error_if_nonfinite=True)
             optimizer.step()
             # ParamConstraint.small_param_thresh(model)
 

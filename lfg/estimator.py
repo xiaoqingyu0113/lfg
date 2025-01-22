@@ -73,7 +73,8 @@ class OptimLayer(nn.Module):
                                                    aux_vars=[vars[f'w_prior{0}']],
                                                    cost_weight= w0_weight))
 
-        optimizer = th.LevenbergMarquardt(objective, max_iterations=self.max_iterations)
+        # optimizer = th.LevenbergMarquardt(objective, max_iterations=self.max_iterations)
+        optimizer = th.GaussNewton(objective=objective, max_iterations=self.max_iterations)
         layer = th.TheseusLayer(optimizer)
         return layer
         # self.layer.to(DEVICE)

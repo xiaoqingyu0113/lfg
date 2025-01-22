@@ -1,7 +1,7 @@
 defaults:
   - model: traj/mnn
   - estimator: optim_layer
-  - dataset: real/tennis
+  - dataset: real/tennis_kpts
   - _self_
 
 hydra:

@@ -57,15 +57,28 @@ class LFG:
         # for issam
         self.gid = 0
         self.graph = gtsam.NonlinearFactorGraph()
-        self.isam2 = gtsam.ISAM2(gtsam.ISAM2Params())
+        params = gtsam.ISAM2Params()
+
+        ## GN optimizer
+        params.setRelinearizeThreshold(0.5)
+        params.relinearizeSkip = 50       
+             
+        ## Dogleg Optimizer [TOO SLOW]
+        # dogleg_params = gtsam.ISAM2DoglegParams()
+        # params.setOptimizationParams(dogleg_params)
+        # dogleg_params.setInitialDelta(1.0)  # Example: set the initial trust region size
+
+        self.isam2 = gtsam.ISAM2(params)
         self.initial_estimate = gtsam.Values()
         self.optim_estimate = None
         self.min_graph_size = min_graph_size
-        self.pPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.010, 0.010, 0.010], dtype=DTYPE))
-        self.vwNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.001, 0.001, 0.001, 0.1, 0.1, 0.1], dtype=DTYPE))
-        self.wPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.1], dtype=DTYPE))
 
 
+
+        self.pPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.600, 0.600, 0.600], dtype=DTYPE))
+        self.pNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01], dtype=DTYPE))
+        self.vwNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01], dtype=DTYPE))
+        self.wPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01], dtype=DTYPE))
 
 
     def compute_position_prior(self, det):
@@ -73,7 +86,7 @@ class LFG:
         points_3d = None
         if self.prev_time is not None \
             and self.prev_camera_id != camera_id \
-            and timestamp - self.prev_time < 0.010:
+            and timestamp - self.prev_time < 0.020:
 
             prev_camparam = self.cam_params_dict[self.prev_camera_id]
             curr_camparam = self.cam_params_dict[camera_id]
@@ -93,16 +106,23 @@ class LFG:
         return points_3d
     
     def update(self, det):
+        # if len(det) == 6:
         t, camera_id, u, v = self.det_parser(det)
-
-        w_prior = np.array([1,0,0], dtype=DTYPE)
         l_prior = self.compute_position_prior(det)
+        # else:
+        #     t = det[1]
+        #     l_prior = det[2:5]
+        #     camera_id = None
+        #     u = None
+        #     v = None
+            
+        w_prior = np.array([1,0,0], dtype=DTYPE)
+        
 
         if l_prior is None:
             self.prev_time = t
             self.prev_camera_id = camera_id
             self.prev_uv = np.array([u, v])
-
             return None
 
         if self.prev_l_prior is None:
@@ -111,6 +131,8 @@ class LFG:
         else:
             l_interp = 0.5*(l_prior + self.prev_l_prior)
             t_interp = 0.5*(t + self.prev_time)
+            # l_interp = l_prior
+            # t_interp = t
             
         
 
@@ -122,7 +144,8 @@ class LFG:
             self.initial_estimate.insert(W(self.gid), w_prior)
             self.initial_estimate.insert(V(self.gid), 1e-3*np.random.rand(3).astype(DTYPE))
         else:
-            self.graph.push_back(PositionFactor(self.pPriorNoise, L(self.gid-1), V(self.gid-1), L(self.gid), 0.0, t_interp-self.prev_interp_time))
+            # print("dt", t_interp-self.prev_interp_time)
+            self.graph.push_back(PositionFactor(self.pNoise, L(self.gid-1), V(self.gid-1), L(self.gid), 0.0, t_interp-self.prev_interp_time))
             self.graph.push_back(VWFactor(self.vwNoise,L(self.gid-1), V(self.gid-1), W(self.gid-1), V(self.gid), W(self.gid), 0.0, t_interp - self.prev_interp_time, 0.076))
 
             if self.optim_estimate is None:
@@ -136,10 +159,20 @@ class LFG:
 
         if self.gid > self.min_graph_size:
             self.isam2.update(self.graph, self.initial_estimate)
-            self.optim_estimate = self.isam2.calculateEstimate()
-            self.graph.resize(0)
-            self.initial_estimate.clear()
 
+            if self.gid < self.min_graph_size + 10:
+                for _ in range(10):
+                    self.isam2.update()
+
+            # elif l_prior[2] < 0.5:
+            #     for _ in range(10):
+            #         self.isam2.update()
+            # else:
+            #     self.isam2.update()
+ 
+            self.optim_estimate = self.isam2.calculateEstimate()
+            self.graph=gtsam.NonlinearFactorGraph()
+            self.initial_estimate.clear()
         
         # move outside
         self.prev_time = t
@@ -154,3 +187,6 @@ class LFG:
             return self.optim_estimate.atVector(L(self.gid-1)), self.optim_estimate.atVector(V(self.gid-1)), self.optim_estimate.atVector(W(self.gid-1))
         else:
             return None
+
+    def get_initial_estimate(self):
+        return self.optim_estimate.atVector(L(0)), self.optim_estimate.atVector(V(0)), self.optim_estimate.atVector(W(0))

@@ -33,7 +33,7 @@ def detections2points3d(detections, detection_filename):
 
     camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
     date = 'Dec13'
-    cam_params = [read_cam_calibration(f'conf/camera/{cname}_calibration_{date}.yaml') for cname in camera_names]
+    cam_params = [read_cam_calibration(f'conf/camera/{cname}_calibration_{date}_pose_kpts.yaml') for cname in camera_names]
     cam_params_dict =  {'camera_'+str(i+1):cam_params[i] for i in range(6)}
 
 
@@ -49,10 +49,6 @@ def detections2points3d(detections, detection_filename):
         # triangulate the 3d point
         if prev_time is not None \
             and prev_camera_id != camera_id \
-            and prev_camera_id != 'camera_1' \
-            and camera_id != 'camera_1' \
-            and prev_camera_id != 'camera_6' \
-            and camera_id != 'camera_6' \
             and traj_idx == prev_traj_idx \
             and timestamp - prev_time < 0.010:
 
@@ -152,8 +148,8 @@ def generate_3d_dataset(detection_filename):
             # save the points [trajectory_idx, timestamp, x, y, z, 0,0,0,1,0,0]
             detection_filename_ = detection_filename.split('/')[-1].split('.')[0]
             ppp = np.column_stack((np.ones_like(t)*current_traj_idx, t, x, y, z, np.zeros_like(t), np.zeros_like(t), np.zeros_like(t), np.ones_like(t), np.zeros_like(t), np.zeros_like(t)))
-            np.savetxt(f'data/real/tennis_no_1_6/{detection_filename_}_{current_traj_idx:02d}.txt', ppp, fmt='%f')
-            print(f'Saved to data/real/tennis_no_1_6/{detection_filename_}_{current_traj_idx:02d}.txt')
+            np.savetxt(f'data/real/tennis_kpts/{detection_filename_}_{current_traj_idx:02d}.txt', ppp, fmt='%f')
+            print(f'Saved to data/real/tennis_kpts/{detection_filename_}_{current_traj_idx:02d}.txt')
             
         if 'right' == event.key:
             current_traj_idx = min(current_traj_idx + 1, max_traj_idx)
@@ -195,9 +191,11 @@ def load_trajectory():
     
     print(f'lowest_z = {lowest_z}')
     print(f"mean = {np.mean(lowest_z)}")
+    print(f"min mean = {np.min(lowest_z)}")
+    print(f"max mean = {np.max(lowest_z)}")
 
 import glob
-detection_file = glob.glob('data/real/detections_tennis/data1*.json')[0]
+detection_file = glob.glob('data/real/detections_tennis/data7*.json')[0]
 
-generate_3d_dataset(detection_file)
-# load_trajectory()
+# generate_3d_dataset(detection_file)
+load_trajectory()

@@ -363,10 +363,6 @@ def detections2points3d(detections, detection_filename):
         # triangulate the 3d point
         if prev_time is not None \
             and prev_camera_id != camera_id \
-            and prev_camera_id != 'camera_4' \
-            and camera_id != 'camera_4' \
-            and prev_camera_id != 'camera_3' \
-            and camera_id != 'camera_3' \
             and traj_idx == prev_traj_idx \
             and timestamp - prev_time < 0.010:
 
@@ -445,6 +441,6 @@ def start_app():
 
 
 if __name__ == "__main__":
-    # start_app()
+    start_app()
 
-    generate_3d_dataset()
+    # generate_3d_dataset()
