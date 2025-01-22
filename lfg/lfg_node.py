@@ -48,13 +48,14 @@ def detection_data_parser(data):
     return data
 
 class LFG_Node:
-    def __init__(self):
+    def __init__(self, verbose=False):
 
-        self.lfg = LFG(cam_params_dict=None, det_parser=detection_data_parser, min_graph_size=30)
+        self.lfg = LFG(cam_params_dict=None, det_parser=detection_data_parser, min_graph_size=10)
         self.inference = None # set by LFG inference result
         self.curr_header = None # set by obs
+        self.verbose = verbose
 
-        self.pred_params = {'duration': 2.0,
+        self.pred_params = {'duration': 3.0,
                             'N': 100} # configure the time period and resolution of the prediction
         
         self.path_publisher = rospy.Publisher('/ball/rollout/path', Path, queue_size=1)
@@ -62,7 +63,7 @@ class LFG_Node:
 
         self.state_history = [] # List[Tuple(p,v,w)], save all latest estimation states at current
         self.bounce_idx = [] # save the indices of bounce happend in self.state_history 
-        self.bc_muted_period = 5 # number of obs suppressed before publishing the estimation
+        self.bc_muted_period = 30 # number of obs suppressed before publishing the estimation
 
         rospy.loginfo("LFG node ready!")
 
@@ -74,9 +75,12 @@ class LFG_Node:
         p1, v1, w1 = self.state_history[-2]
 
         if v2[2] > 0.0 and v1[2] < 0.0:
-            self.bounce_idx.append(len(self.state_history)-1)
-            print(f'Detected the {len(self.bounce_idx)}th bounce')
-            return True
+            curr_idx = len(self.state_history)-1
+            if len(self.bounce_idx) > 0 and curr_idx - self.bounce_idx[-1] < 3: # two bounces should not occur within 5 frames, if it is, should be noise 
+                # self.bounce_idx[-1] = curr_idx
+                return False
+            else:
+                return True
         else:
             return False
         
@@ -85,7 +89,9 @@ class LFG_Node:
         if self.inference is None:
             return False
         # don't publish result right after a small period of bounce. wait for more obs to stablize the est.
-        if (len(self.state_history) -1) - self.bounce_idx[-1] < self.bc_muted_period:
+        if len(self.bounce_idx) > 0 and (len(self.state_history) -1) - self.bounce_idx[-1] < self.bc_muted_period:
+            # if self.verbose:
+            #     print(f'At {len(self.state_history)}. Muted by bounce because it is close to the last bounce {self.bounce_idx[-1]}')
             return False
 
         return True
@@ -94,6 +100,8 @@ class LFG_Node:
     
     def add_to_graph(self, data, cam_id):
         t = data.header.stamp.to_sec()
+
+        start_time = rospy.Time.now()
         for d in data.points:
             # this will only accept the first points, the second points will be filtered out by lfg objects internally.
             self.inference = self.lfg.update((t, cam_id, d.x, d.y))
@@ -102,10 +110,18 @@ class LFG_Node:
                 self.state_history.append(self.inference) 
             if self.is_bounce():
                 self.bounce_idx.append(len(self.state_history)-1)
-                print(f'Detected the {len(self.bounce_idx)}th bounce')
+                if self.verbose:
+                    print(f'At {len(self.state_history)} Detected the {len(self.bounce_idx)}th bounce')
+        _INFERENCE_TIME = (rospy.Time.now() - start_time).to_sec()
+        if self.verbose and _INFERENCE_TIME > 0.010:
+            print(f'\t - INFERENCE: At {len(self.state_history)}. Inference takes {_INFERENCE_TIME} seconds')
 
         if self.allow_publish():
+            start_time = rospy.Time.now()
             self.publish_prediction()
+            _PUBLISH_TIME = (rospy.Time.now() - start_time).to_sec()
+            if self.verbose and _PUBLISH_TIME > 0.010:
+                print(f'\t - PUBLISH: At {len(self.state_history)}. Publish takes {_PUBLISH_TIME} seconds')
 
     def publish_prediction(self):
         duration = self.pred_params['duration']
@@ -118,7 +134,7 @@ class LFG_Node:
             p = points[i,:]
             t = times[i]
 
-            if 0 <= p[0] <= 28 and -4 <= p[1] <= 4 and 0 <= p[2] <= 6:
+            if 0 <= p[0] <= 28 and -4 <= p[1] <= 4:
                 stamp = self.curr_header.stamp + rospy.Duration(t)
                 header = Header(self.curr_header.seq, stamp, 'world')
                 point = Point(p[0], p[1], p[2])
@@ -152,14 +168,14 @@ class LFG_Node:
 def listener():
     rospy.init_node('LFG_Node', anonymous=True)
 
-    lfg_node = LFG_Node()
+    lfg_node = LFG_Node(verbose=True)
 
-    rospy.Subscriber("/camera_1/detector_1/detections", Detections, lambda data: enqueue_callback(lfg_node.callback1,data),queue_size=1)
-    rospy.Subscriber("/camera_2/detector_2/detections", Detections, lambda data: enqueue_callback(lfg_node.callback2,data),queue_size=1)
-    rospy.Subscriber("/camera_3/detector_3/detections", Detections, lambda data: enqueue_callback(lfg_node.callback3,data),queue_size=1)
-    rospy.Subscriber("/camera_4/detector_4/detections", Detections, lambda data: enqueue_callback(lfg_node.callback4,data),queue_size=1)
-    rospy.Subscriber("/camera_5/detector_5/detections", Detections, lambda data: enqueue_callback(lfg_node.callback5,data),queue_size=1)
-    rospy.Subscriber("/camera_6/detector_6/detections", Detections, lambda data: enqueue_callback(lfg_node.callback6,data),queue_size=1)
+    rospy.Subscriber("/camera_1/detector_1/detections", Detections, lambda data: enqueue_callback(lfg_node.callback1,data),queue_size=2)
+    rospy.Subscriber("/camera_2/detector_2/detections", Detections, lambda data: enqueue_callback(lfg_node.callback2,data),queue_size=2)
+    rospy.Subscriber("/camera_3/detector_3/detections", Detections, lambda data: enqueue_callback(lfg_node.callback3,data),queue_size=2)
+    rospy.Subscriber("/camera_4/detector_4/detections", Detections, lambda data: enqueue_callback(lfg_node.callback4,data),queue_size=2)
+    rospy.Subscriber("/camera_5/detector_5/detections", Detections, lambda data: enqueue_callback(lfg_node.callback5,data),queue_size=2)
+    rospy.Subscriber("/camera_6/detector_6/detections", Detections, lambda data: enqueue_callback(lfg_node.callback6,data),queue_size=2)
 
     process_callback_queue()
 
