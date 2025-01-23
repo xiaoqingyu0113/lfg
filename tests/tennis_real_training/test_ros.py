@@ -5,7 +5,7 @@ import json
 import yaml
 import os
 
-from lfg.ros import LFG, DTYPE
+from lfg.ros import LFG, DTYPE, LFG
 from lfg.derive import predict
 
 # DTYPE = np.float64

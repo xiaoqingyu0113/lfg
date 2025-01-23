@@ -30,7 +30,7 @@ callback_lock = Lock()
 
 def enqueue_callback(callback, data):
     with callback_lock:
-        if len(callback_queue) > 3:
+        if len(callback_queue) > 50:
             callback_queue.popleft()
         callback_queue.append((callback, data))
 
