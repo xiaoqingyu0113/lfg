@@ -9,7 +9,8 @@ from geometry_msgs.msg import PointStamped, Point,  PoseStamped, Pose, Quaternio
 from nav_msgs.msg import Path
 from std_msgs.msg import Header
 from tf.transformations import quaternion_from_euler
-
+from visualization_msgs.msg import Marker
+from geometry_msgs.msg import Point
 
 import numpy as np
 from typing import List, Optional
@@ -51,6 +52,7 @@ class LFG_Node:
     def __init__(self, verbose=False):
 
         self.lfg = LFG(cam_params_dict=None, det_parser=detection_data_parser, min_graph_size=10)
+
         self.inference = None # set by LFG inference result
         self.curr_header = None # set by obs
         self.verbose = verbose
@@ -60,6 +62,7 @@ class LFG_Node:
         
         self.path_publisher = rospy.Publisher('/ball/rollout/path', Path, queue_size=1)
         self.ball_publisher = rospy.Publisher('/ball/rollout/pos', PoseStamped, queue_size=1)
+        self.courtline_publisher = rospy.Publisher('/tennis_court_markers', Marker, queue_size=10)
 
         self.state_history = [] # List[Tuple(p,v,w)], save all latest estimation states at current
         self.bounce_idx = [] # save the indices of bounce happend in self.state_history 
@@ -148,6 +151,7 @@ class LFG_Node:
             path = Path(header, poses_stamped)
             self.path_publisher.publish(path)
             self.ball_publisher.publish(poses_stamped[0])
+            self.publish_court_markers()
                 
 
     def callback1(self, data):
@@ -164,7 +168,117 @@ class LFG_Node:
         self.add_to_graph(data, 'camera_6')
 
 
+
     
+
+    def publish_court_markers(self):
+        def add_line(marker, x1, y1, z1, x2, y2, z2):
+            """Helper to add a line segment between two 3D points to the marker."""
+            p1 = Point()
+            p1.x, p1.y, p1.z = x1, y1, z1
+            p2 = Point()
+            p2.x, p2.y, p2.z = x2, y2, z2
+            
+            # Each pair of points in a LINE_LIST marker is one line segment
+            marker.points.append(p1)
+            marker.points.append(p2)
+
+        def create_net_marker():
+            court_length = 23.77
+            net_height = 0.914 
+            net_x = court_length / 2
+            court_width_doubles = 10.97
+
+            marker = Marker()
+            marker.header.frame_id = "world"
+            marker.header.stamp = rospy.Time.now()
+            marker.ns = "tennis_court"
+            marker.id = 100  # Unique ID for net
+            marker.type = Marker.CUBE
+            marker.action = Marker.ADD
+            marker.pose.position.x = net_x
+            marker.pose.position.y = 0
+            marker.pose.position.z = net_height / 2  # Center the cube vertically
+            marker.scale.x = 0.05           # Thickness of the net
+            marker.scale.y = court_width_doubles  # Full width of doubles court
+            marker.scale.z = net_height     # Height of the net
+            marker.color.a = 0.5            # Semi-transparent
+            marker.color.r = 0.5
+            marker.color.g = 0.5
+            marker.color.b = 0.5
+            return marker
+        
+        # Create and configure the Marker
+        court = Marker()
+        court.header.frame_id = "world"       # change as needed (map, odom, etc.)
+        court.header.stamp = rospy.Time.now()
+        court.ns = "tennis_court"
+        court.id = 0
+        court.type = Marker.LINE_LIST
+        court.action = Marker.ADD
+        
+        # Set line thickness
+        court.scale.x = 0.05  # meters
+        
+        # White color
+        court.color.r = 1.0
+        court.color.g = 1.0
+        court.color.b = 1.0
+        court.color.a = 1.0  # fully opaque
+        
+        z = 0.0  # all lines on the ground plane
+        
+        # Court dimensions (meters):
+        #   - Baseline to baseline: 23.77
+        #   - Net at x=11.885
+        #   - Doubles width: 10.97 (y from -5.485 to +5.485)
+        #   - Singles width: 8.23  (y from -4.115 to +4.115)
+        #   - Service line: 6.40 from net => near side at x=5.485, far side at x=18.285
+        #   - Center service line: y=0 between each service line and the net
+        #   - Center mark on near baseline: short segment at x=0 from y=-0.05 to +0.05
+        
+        # 1) Near Baseline (doubles)
+        add_line(court, 0.0, -5.485, z, 0.0,  5.485, z)
+        
+        # 2) Far Baseline (doubles)
+        add_line(court, 23.77, -5.485, z, 23.77,  5.485, z)
+        
+        # 3) Left doubles sideline
+        add_line(court, 0.0, -5.485, z, 23.77, -5.485, z)
+        
+        # 4) Right doubles sideline
+        add_line(court, 0.0,  5.485, z, 23.77,  5.485, z)
+        
+        # 5) Left singles sideline
+        add_line(court, 0.0, -4.115, z, 23.77, -4.115, z)
+        
+        # 6) Right singles sideline
+        add_line(court, 0.0,  4.115, z, 23.77,  4.115, z)
+        
+        # 7) Net (x=11.885)
+        add_line(court, 11.885, -5.485, z, 11.885, 5.485, z)
+        
+        # 8) Near service line (x=5.485)
+        add_line(court, 5.485, -4.115, z, 5.485,  4.115, z)
+        
+        # 9) Far service line (x=18.285)
+        add_line(court, 18.285, -4.115, z, 18.285,  4.115, z)
+        
+        # 10) Center service line (near side)
+        add_line(court, 5.485, 0.0, z, 11.885, 0.0, z)
+        
+        # 11) Center service line (far side)
+        add_line(court, 11.885, 0.0, z, 18.285, 0.0, z)
+        
+        # 12) Center mark on the near baseline
+        add_line(court, 0.0, -0.05, z, 0.0, 0.05, z)
+        
+        # Continuously publish the marker
+        court.header.stamp = rospy.Time.now()
+        self.courtline_publisher.publish(court)
+        self.courtline_publisher.publish(create_net_marker())
+
+
 def listener():
     rospy.init_node('LFG_Node', anonymous=True)
 
@@ -173,9 +287,9 @@ def listener():
     rospy.Subscriber("/camera_1/detector_1/detections", Detections, lambda data: enqueue_callback(lfg_node.callback1,data),queue_size=2)
     rospy.Subscriber("/camera_2/detector_2/detections", Detections, lambda data: enqueue_callback(lfg_node.callback2,data),queue_size=2)
     rospy.Subscriber("/camera_3/detector_3/detections", Detections, lambda data: enqueue_callback(lfg_node.callback3,data),queue_size=2)
-    rospy.Subscriber("/camera_4/detector_4/detections", Detections, lambda data: enqueue_callback(lfg_node.callback4,data),queue_size=2)
-    rospy.Subscriber("/camera_5/detector_5/detections", Detections, lambda data: enqueue_callback(lfg_node.callback5,data),queue_size=2)
-    rospy.Subscriber("/camera_6/detector_6/detections", Detections, lambda data: enqueue_callback(lfg_node.callback6,data),queue_size=2)
+    # rospy.Subscriber("/camera_4/detector_4/detections", Detections, lambda data: enqueue_callback(lfg_node.callback4,data),queue_size=2)
+    # rospy.Subscriber("/camera_5/detector_5/detections", Detections, lambda data: enqueue_callback(lfg_node.callback5,data),queue_size=2)
+    # rospy.Subscriber("/camera_6/detector_6/detections", Detections, lambda data: enqueue_callback(lfg_node.callback6,data),queue_size=2)
 
     process_callback_queue()
 

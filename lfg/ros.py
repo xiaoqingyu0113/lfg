@@ -80,7 +80,7 @@ class LFG:
 
 
         self.pPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.600, 0.600, 0.600], dtype=DTYPE))
-        self.vPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([1, 1, 1], dtype=DTYPE))
+        self.vPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([5, 5, 5], dtype=DTYPE))
         self.pNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01], dtype=DTYPE))
         self.vwNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01], dtype=DTYPE))
         self.wPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01], dtype=DTYPE))

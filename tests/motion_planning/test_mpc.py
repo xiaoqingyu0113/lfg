@@ -146,7 +146,7 @@ graph = gtsam.NonlinearFactorGraph()
 
 
 start = np.array([0, 0, 0])
-goal = np.array([10, 10, np.pi])
+goal = np.array([10, 10, 1*np.pi/3])
 for i in range(N-1):
     graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.01])), X(i), U(i), X(i+1), i, i+1))
 graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(0), start))
@@ -224,4 +224,4 @@ def update(i):
 ani = FuncAnimation(fig, update, frames=N, interval=50)
 
 # Save as a GIF
-ani.save("trajectory_following_3.gif", writer=PillowWriter(fps=20))
+ani.save("trajectory_following_1.gif", writer=PillowWriter(fps=20))
