@@ -7,6 +7,7 @@ import lfg.model_traj.mnn as mnn
 import lfg.model_traj.lstm as lstm
 import lfg.model_traj.puremlp as puremlp
 import lfg.model_traj.skip as skip
+import lfg.model_traj.mnnl as mnnl
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
@@ -303,7 +304,7 @@ def euler_integrate(model, v0, w0, tspan):
 def train_loop(task='train'):
     train_loader, test_loader = Dataset.get_loader(batch_size=64, shuffle=True)
     # model = TestModel5()
-    model_name = 'MNN'
+    model_name = 'MNNL'
     if model_name == 'MLP':
         model = mlp.AeroModel()
     elif model_name == 'MNN':
@@ -314,7 +315,8 @@ def train_loop(task='train'):
         model = lstm.AeroModel()
     elif model_name == 'Skip':
         model = skip.AeroModel()
-    
+    elif model_name == 'MNNL':
+        model = mnnl.AeroModel()
     model.to(device)
 
     if task == 'train':

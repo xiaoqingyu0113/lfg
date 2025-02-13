@@ -108,7 +108,6 @@ class RealTrajectoryDataset(Dataset):
         for i in range(int(data_tmp[-1][0])+1):
             mask = data_tmp[:, 0].astype(int) == i
             data_tmp_i = data_tmp[mask, :]
-            print(data_tmp_i.shape)
             interp_f = interp1d(data_tmp_i[:, 1], data_tmp_i, axis=0)
             tmax = data_tmp_i[-1, 1]
             tmin = data_tmp_i[0, 1]
@@ -319,7 +318,7 @@ def train_loop(cfg):
     
 
     print_cfg(cfg)
-    
+
     # get dataloaders
     train_loader, test_loader = RealTrajectoryDataset.get_dataloaders(cfg)
 

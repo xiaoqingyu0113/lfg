@@ -173,3 +173,4 @@ plots/
 # files below should not be ignored
 !data/archive/*
 !data/real/triangulated/*.csv
+lfg/darknet

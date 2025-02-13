@@ -1,0 +1,36 @@
+# names and directories
+name: MNNL
+logdir: "logdir/traj_train/${model.name}/${model.loss_type}/${dataset.name}/${estimator.name}" # logdir/${model_name}/${dataset name}/run{x}/
+
+# model initialization
+args:
+  - none
+  - none
+kwargs:
+  bc_dims: none
+  z0: 0.076 #0.010
+
+
+# data augmentation  
+augment_data: false
+add_noise: 5e-3
+
+
+# training
+seed: 42
+num_epochs: 300
+warm_start: true
+
+## lr scheduler
+# lr_init: 1e-4
+lr_init: 3e-4 # for tennis
+
+
+training_data_split: 0.8
+
+valid_interval: 1 # validation interval in epochs
+continue_training: 'new' # 'new' or 'last' or 'run[number]'
+
+# loss
+loss_type: 'pos' # 'vel' or 'pos' or mixed by '+' e.g. 'vel+pos'
+seq_ratio: 1.0 # number of point in sequence to be used for loss calculation
