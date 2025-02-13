@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation, PillowWriter
 import time
+import numba
 
 def draw_robot(ax, X, linewidth=2, arrow_length=0.6):
     x, y , theta = X
@@ -32,6 +33,7 @@ def assign_jacobians(jacobians: List[np.ndarray],J: List[np.ndarray]):
      for i, JJ in enumerate(J):
           jacobians[i] = JJ
 
+@numba.jit(nopython=True, cache=True)
 def compute_pose(x1, u1, t):
     """
     Compute the predicted pose after applying controls.
@@ -57,6 +59,7 @@ def compute_pose(x1, u1, t):
     # theta_new = (theta_new + np.pi) % (2 * np.pi) - np.pi
     return np.array([x_new, y_new, theta_new])
 
+@numba.jit(nopython=True, cache=True)
 def Jerr_compute_pose(x1, u1, x2, t):
     """
     Compute the Jacobians of the error function with respect to x1, u1, and x2.
@@ -79,9 +82,9 @@ def Jerr_compute_pose(x1, u1, x2, t):
         
         # Jacobian w.r.t x1
         J_x1 = np.array([
-            [1, 0, -R * (cos_theta - cos_theta_dt)],
-            [0, 1, -R * (sin_theta_dt - sin_theta)],
-            [0, 0, 1]
+            [1.0, 0.0, -R * (cos_theta - cos_theta_dt)],
+            [0.0, 1.0, -R * (sin_theta_dt - sin_theta)],
+            [0.0, 0.0, 1.0]
         ])
         
         # Jacobian w.r.t u1
@@ -90,7 +93,7 @@ def Jerr_compute_pose(x1, u1, x2, t):
         J_u1 = np.array([
             [dR_dv_x * (-sin_theta + sin_theta_dt), dR_dtheta_dot * (-sin_theta + sin_theta_dt) + R * t * cos_theta_dt],
             [dR_dv_x * (cos_theta - cos_theta_dt), dR_dtheta_dot * (cos_theta - cos_theta_dt) - R * t * sin_theta_dt],
-            [0, t]
+            [0.0, t]
         ])
         
     else:  # Straight-line motion
@@ -99,16 +102,16 @@ def Jerr_compute_pose(x1, u1, x2, t):
         
         # Jacobian w.r.t x1
         J_x1 = np.array([
-            [1, 0, -v_x * t * sin_theta],
-            [0, 1, v_x * t * cos_theta],
-            [0, 0, 1]
+            [1.0, 0.0, -v_x * t * sin_theta],
+            [0.0, 1.0, v_x * t * cos_theta],
+            [0.0, 0.0, 1.0]
         ])
         
         # Jacobian w.r.t u1
         J_u1 = np.array([
-            [t * cos_theta, 0],
-            [t * sin_theta, 0],
-            [0, t]
+            [t * cos_theta, 0.0],
+            [t * sin_theta, 0.0],
+            [0.0, t]
         ])
     
     # Jacobian w.r.t x2
@@ -137,7 +140,7 @@ class PriorFactor(gtsam.CustomFactor):
             return error
         super().__init__(noiseModel, [x_key], error_function) # may change to partial
 
-N = 100
+N = 50
 
 # Create a graph
 isam2 = gtsam.ISAM2(gtsam.ISAM2Params())
@@ -146,7 +149,7 @@ graph = gtsam.NonlinearFactorGraph()
 
 
 start = np.array([0, 0, 0])
-goal = np.array([10, 10, 1*np.pi/3])
+goal = np.array([10, 10, 2*np.pi/3])
 for i in range(N-1):
     graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.01])), X(i), U(i), X(i+1), i, i+1))
 graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(0), start))
@@ -169,6 +172,8 @@ for i in range(1, N-1):
 params = gtsam.LevenbergMarquardtParams()
 optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate, params)
 
+
+
 INFERENCE_TIME = -time.time()
 result = optimizer.optimize()
 print("Inference Time: ", INFERENCE_TIME + time.time())
@@ -179,28 +184,6 @@ rst_u = np.array([result.atVector(U(i)) for i in range(N-1)])
 
 # plot the result
 fig, ax = plt.subplots(figsize=(6, 6))
-
-# for i in range(N):
-#     ax.clear()
-#     draw_robot(ax, rst_x[i])
-#     # plot planned trajectory
-#     ax.plot(rst_x[:,0], rst_x[:,1])
-#     # plot start and goal
-#     ax.arrow(start[0], start[1], 0.6*np.cos(start[2]), 0.6*np.sin(start[2]), head_width=0.3, head_length=0.3, fc='r', ec='r')
-#     ax.scatter(start[0], start[1], 5, c='r')
-#     ax.text(start[0]-0.5, start[1]-0.5, "start", color='red')
-#     ax.arrow(goal[0], goal[1], 0.6*np.cos(goal[2]), 0.6*np.sin(goal[2]), head_width=0.3, head_length=0.3, fc='g', ec='g')
-#     ax.scatter(goal[0], goal[1], 5, c='g')
-#     ax.text(goal[0]+0.5, goal[1]+0.5, "goal", color='green')
-
-#     ax.set_xlim(-5, 14)
-#     ax.set_ylim(-5, 14)
-#     plt.draw()
-#     plt.pause(0.01)
-
-
-# plt.show()
-
 
 def update(i):
     ax.clear()
@@ -221,7 +204,8 @@ def update(i):
     ax.set_title(f"Frame {i + 1}/{N}")
 
 # Create the animation
-ani = FuncAnimation(fig, update, frames=N, interval=50)
+ani = FuncAnimation(fig, update, frames=N-1, interval=50)
 
 # Save as a GIF
-ani.save("trajectory_following_1.gif", writer=PillowWriter(fps=20))
+ani.save("trajectory_following_2.gif", writer=PillowWriter(fps=20))
+plt.close(fig)

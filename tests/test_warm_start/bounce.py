@@ -18,7 +18,7 @@ import lfg.model_traj.mnn as mnn
 import lfg.model_traj.lstm as lstm
 import lfg.model_traj.puremlp as puremlp
 import lfg.model_traj.skip as skip
-
+import lfg.model_traj.mnnl as mnnl
 
 def generate_bounce_data(N: int = 400) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
     mu = 0.22
@@ -250,7 +250,7 @@ def test_bounce_training():
     w_new_N = w_new_N.to('cuda')
 
     # model = TestModel3()
-    model_name = 'MNN'
+    model_name = 'MNNL'
     if model_name == 'MLP':
         model = mlp.BounceModel()
     elif model_name == 'MNN':
@@ -261,6 +261,8 @@ def test_bounce_training():
         model = lstm.BounceModel()
     elif model_name == 'Skip':
         model = skip.BounceModel()
+    elif model_name == 'MNNL':
+        model = mnnl.BounceModel()
 
     model = model.to('cuda')
     # model.load_state_dict(torch.load('bounce_model.pth'))
