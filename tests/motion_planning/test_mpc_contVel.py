@@ -1,5 +1,5 @@
 import gtsam
-from gtsam.symbol_shorthand import X, U
+from gtsam.symbol_shorthand import X, V,U
 from typing import List, Optional
 import numpy as np
 import matplotlib.pyplot as plt
@@ -12,18 +12,14 @@ def draw_robot(ax, X, linewidth=2, arrow_length=0.6):
     d = 0.8
     r = 0.2
 
-
     kpts = np.array([[-r, d/2], [r, d/2], [0, d/2], [0, -d/2],[-r, -d/2],[r, -d/2], [0, 0],[arrow_length, 0]])
 
     tf_kpts = np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]]) @ kpts.T + np.array([[x], [y]]) # 2 x N
-
 
     ax.plot(tf_kpts[0, 0:2], tf_kpts[1,0:2], 'b-', linewidth=linewidth)
     ax.plot(tf_kpts[0, 2:4], tf_kpts[1,2:4], 'b-', linewidth=linewidth)
     ax.plot(tf_kpts[0, 4:6], tf_kpts[1,4:6], 'b-', linewidth=linewidth)
     ax.arrow(tf_kpts[0,6], tf_kpts[1,6], tf_kpts[0,7]-tf_kpts[0,6], tf_kpts[1,7]-tf_kpts[1,6], head_width=0.3, head_length=0.3, fc='k', ec='k')
-
-
 
 
 
@@ -137,8 +133,30 @@ class PriorFactor(gtsam.CustomFactor):
             return error
         super().__init__(noiseModel, [x_key], error_function) # may change to partial
 
+class VPriorFactor(gtsam.CustomFactor):
+    def __init__(self, noiseModel, x_key, x_val):
+        def error_function(self,values: gtsam.Values, jacobians: Optional[List[np.ndarray]]) -> float:
+            x = values.atVector(x_key)
+            error = x - x_val
+            if jacobians is not None:
+                jacobians[0] = np.eye(2)
+            return error
+        super().__init__(noiseModel, [x_key], error_function) # may change to partial
+
+class VBetweenFactor(gtsam.CustomFactor):
+    def __init__(self, noiseModel, x_key, y_key):
+        def error_function(self,values: gtsam.Values, jacobians: Optional[List[np.ndarray]]) -> float:
+            x, y = values.atVector(x_key), values.atVector(y_key)
+            error = y-x
+            if jacobians is not None:
+                jacobians[0] = -np.eye(2)
+                jacobians[1] = np.eye(2)
+            return error
+        super().__init__(noiseModel, [x_key,y_key], error_function) # may change to partial
+
+# params
 N = 50
-gif_name = "trajectory_following_2.gif"
+gif_name = "trajectory_following_3.gif"
 # Create a graph
 isam2 = gtsam.ISAM2(gtsam.ISAM2Params())
 initial_estimate = gtsam.Values()
@@ -146,26 +164,35 @@ graph = gtsam.NonlinearFactorGraph()
 
 
 start = np.array([0, 0, 0])
-goal = np.array([10, 10, 2*np.pi/3])
+goal = np.array([10, 10, 3*np.pi/3])
+v_start = np.array([0, 0])
+v_goal = np.array([0, 0])
+
 for i in range(N-1):
-    graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.01])), X(i), U(i), X(i+1), i, i+1))
+    graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.1])), X(i), V(i), X(i+1), i, i+1))
+    graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([1, 1])), V(i), np.array([0, 0])))
+    if i < N-2:
+        graph.push_back(VBetweenFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([10, 10])), V(i), V(i+1)))
+
 graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(0), start))
 graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(N-1), goal))
+graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001])), V(0), v_start))
+graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001])), V(0), v_goal))
 
 
-
+# add estimate
 initial_estimate.insert(X(0), start)
 initial_estimate.insert(X(N-1), goal)
-initial_estimate.insert(U(0), np.array([0, 0]))
-
+initial_estimate.insert(V(0), np.array([0, 0]))
 
 for i in range(1, N-1):
     initial_estimate.insert(X(i), (goal-start)/N*i + start)
-    initial_estimate.insert(U(i), np.array([0, 0]))
+    initial_estimate.insert(V(i), np.array([0, 0]))
 
 # isam2.update(graph, initial_estimate)
 # result = isam2.calculateEstimate()
 
+# inference using LM
 params = gtsam.LevenbergMarquardtParams()
 optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate, params)
 
@@ -174,33 +201,11 @@ result = optimizer.optimize()
 print("Inference Time: ", INFERENCE_TIME + time.time())
 
 rst_x = np.array([result.atVector(X(i)) for i in range(N)])
-rst_u = np.array([result.atVector(U(i)) for i in range(N-1)])
+rst_v = np.array([result.atVector(V(i)) for i in range(N-1)])
 # print(rst_u)
 
 # plot the result
 fig, ax = plt.subplots(figsize=(6, 6))
-
-# for i in range(N):
-#     ax.clear()
-#     draw_robot(ax, rst_x[i])
-#     # plot planned trajectory
-#     ax.plot(rst_x[:,0], rst_x[:,1])
-#     # plot start and goal
-#     ax.arrow(start[0], start[1], 0.6*np.cos(start[2]), 0.6*np.sin(start[2]), head_width=0.3, head_length=0.3, fc='r', ec='r')
-#     ax.scatter(start[0], start[1], 5, c='r')
-#     ax.text(start[0]-0.5, start[1]-0.5, "start", color='red')
-#     ax.arrow(goal[0], goal[1], 0.6*np.cos(goal[2]), 0.6*np.sin(goal[2]), head_width=0.3, head_length=0.3, fc='g', ec='g')
-#     ax.scatter(goal[0], goal[1], 5, c='g')
-#     ax.text(goal[0]+0.5, goal[1]+0.5, "goal", color='green')
-
-#     ax.set_xlim(-5, 14)
-#     ax.set_ylim(-5, 14)
-#     plt.draw()
-#     plt.pause(0.01)
-
-
-# plt.show()
-
 
 def update(i):
     ax.clear()

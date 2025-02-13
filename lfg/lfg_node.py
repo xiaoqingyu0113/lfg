@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 from lfg.ros import LFG
+
 from lfg.derive import predict
 import rospy
 from std_srvs.srv import Empty, EmptyResponse
@@ -7,7 +8,7 @@ from ball_detection_new.msg import Detections
 from ball_detection_new.msg import ImagePoint
 from geometry_msgs.msg import PointStamped, Point,  PoseStamped, Pose, Quaternion
 from nav_msgs.msg import Path
-from std_msgs.msg import Header
+from std_msgs.msg import Header, Bool
 from tf.transformations import quaternion_from_euler
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
@@ -62,7 +63,8 @@ class LFG_Node:
         
         self.path_publisher = rospy.Publisher('/ball/rollout/path', Path, queue_size=1)
         self.ball_publisher = rospy.Publisher('/ball/rollout/pos', PoseStamped, queue_size=1)
-        self.courtline_publisher = rospy.Publisher('/tennis_court_markers', Marker, queue_size=10)
+        self.courtline_publisher = rospy.Publisher('/tennis_court_markers', Marker, queue_size=1)
+        self.bounce_publisher = rospy.Publisher('/ball/rollout/is_bounce', Bool, queue_size=1)
 
         self.state_history = [] # List[Tuple(p,v,w)], save all latest estimation states at current
         self.bounce_idx = [] # save the indices of bounce happend in self.state_history 
@@ -115,6 +117,7 @@ class LFG_Node:
                 self.bounce_idx.append(len(self.state_history)-1)
                 if self.verbose:
                     print(f'At {len(self.state_history)} Detected the {len(self.bounce_idx)}th bounce')
+                
         _INFERENCE_TIME = (rospy.Time.now() - start_time).to_sec()
         if self.verbose and _INFERENCE_TIME > 0.010:
             print(f'\t - INFERENCE: At {len(self.state_history)}. Inference takes {_INFERENCE_TIME} seconds')
@@ -151,6 +154,7 @@ class LFG_Node:
             path = Path(header, poses_stamped)
             self.path_publisher.publish(path)
             self.ball_publisher.publish(poses_stamped[0])
+            self.bounce_publisher.publish(Bool(True)) if len(self.bounce_idx)>0 else self.bounce_publisher.publish(Bool(False))
             self.publish_court_markers()
                 
 
@@ -172,6 +176,11 @@ class LFG_Node:
     
 
     def publish_court_markers(self):
+        '''
+        use visualization_msgs/Marker to publish the court lines and net
+
+        subscribe to '/tennis_court_markers' in frame 'world'
+        '''
         def add_line(marker, x1, y1, z1, x2, y2, z2):
             """Helper to add a line segment between two 3D points to the marker."""
             p1 = Point()
