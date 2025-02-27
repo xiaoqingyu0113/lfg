@@ -85,10 +85,33 @@ class LFG:
         self.vwNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01, 0.01, 0.01, 0.01], dtype=DTYPE))
         self.wPriorNoise = gtsam.noiseModel.Diagonal.Sigmas(np.array([0.01, 0.01, 0.01], dtype=DTYPE))
 
+    def reset(self):
+        self.prev_time =None
+        self.prev_uv = None
+        self.prev_camera_id = None
+        self.prev_l_prior = None
+        self.prev_interp_time = None
+        self.prev_interp_l_prior = None
+
+        # for issam
+        self.gid = 0
+        self.graph = gtsam.NonlinearFactorGraph()
+        params = gtsam.ISAM2Params()
+
+        ## GN optimizer
+        params.setRelinearizeThreshold(0.75) # used to be 0.75
+        params.relinearizeSkip = 50       
+             
+        ## Dogleg Optimizer [TOO SLOW]
+        self.isam2 = gtsam.ISAM2(params)
+        self.initial_estimate = gtsam.Values()
+        self.optim_estimate = None
+
 
     def compute_position_prior(self, det):
         timestamp, camera_id, u, v = self.det_parser(det)
         points_3d = None
+        repr_error = None
         if self.prev_time is not None \
             and self.prev_camera_id != camera_id \
             and timestamp - self.prev_time < 0.020:
@@ -106,21 +129,23 @@ class LFG:
             repr_error = np.linalg.norm(repro_uv - np.array([u,v]))
 
             if repr_error > 120:
-                points_3d = None
+                points_3d = None, None
 
-        return points_3d
+        return points_3d, repr_error
     
     def update(self, det):
         # if len(det) == 6:
+        
         t, camera_id, u, v = self.det_parser(det)
 
-        l_prior = self.compute_position_prior(det)
+        l_prior, _ = self.compute_position_prior(det)
         if l_prior is None:
             self.prev_time = t
             self.prev_camera_id = camera_id
             self.prev_uv = np.array([u, v])
             return None
         
+        # print(l_prior)
         if not (0 <= l_prior[0] <= 24 and \
                 -4 <= l_prior[1] <= 4 and \
                     -0.3 <= l_prior[2] <= 5):
@@ -226,4 +251,15 @@ class LFG:
         return self.optim_estimate.atVector(L(0)), self.optim_estimate.atVector(V(0)), self.optim_estimate.atVector(W(0))
 
 
+    def get_last_k_velocity(self, k):
+        '''
+        return the last k velocity as a 2d numpy array
+        '''
+        if self.gid > k and self.optim_estimate is not None:
 
+            v = []
+            for i in range(k):
+                v.append(self.optim_estimate.atVector(V(self.gid-1-i)))
+            return np.array(v)
+        else:
+            return None
