@@ -29,6 +29,7 @@ def read_cam_calibration(filename):
     t = np.array(data['t_world_cam'])
     return K, R, -R@t
 
+
 class LFG:
     def __init__(self, cam_params_dict=None,
                   det_parser = detection_parser, 
@@ -146,7 +147,7 @@ class LFG:
             return None
         
         # print(l_prior)
-        if not (0 <= l_prior[0] <= 24 and \
+        if not (0 <= l_prior[0] <= 20 and \
                 -4 <= l_prior[1] <= 4 and \
                     -0.3 <= l_prior[2] <= 5):
             # print(l_prior)

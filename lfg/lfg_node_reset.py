@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-from lfg.ros import LFG
+from lfg.ros import LFG, param2proj
 
 from lfg.derive import predict
 import rospy
@@ -12,6 +12,7 @@ from std_msgs.msg import Header, Bool
 from tf.transformations import quaternion_from_euler
 from visualization_msgs.msg import Marker
 from geometry_msgs.msg import Point
+from nav_msgs.msg import Odometry
 
 import numpy as np
 from typing import List, Optional
@@ -43,6 +44,8 @@ def process_callback_queue():
                 callback, data = callback_queue.popleft()
                 callback(data)
 
+
+
 def detection_data_parser(data):
     '''
     return t, camera_id, u, v
@@ -70,6 +73,9 @@ class LFG_Node:
         self.bounce_idx = [] # save the indices of bounce happend in self.state_history 
         self.bc_muted_period = 30 # number of obs suppressed before publishing the estimation
 
+        self.robot_location = None
+        self.prev_obs_time = None
+
         rospy.loginfo("LFG node ready!")
     
     def reset(self):
@@ -79,6 +85,7 @@ class LFG_Node:
         self.state_history = [] # List[Tuple(p,v,w)], save all latest estimation states at current
         self.bounce_idx = [] # save the indices of bounce happend in self.state_history 
         self.lfg.reset()
+        self.robot_odom = None
 
         rospy.loginfo("LFG node reset!")
 
@@ -117,6 +124,12 @@ class LFG_Node:
     def add_to_graph(self, data, cam_id):
         t = data.header.stamp.to_sec()
 
+        if  self.prev_obs_time is not None and t - self.prev_obs_time > 2.0:
+            self.prev_obs_time = t
+            rospy.loginfo('[RESET] large time gap between observations')
+            self.reset()
+            return
+        self.prev_obs_time = t
         start_time = rospy.Time.now()
 
         if len(data.points) > 0:
@@ -126,8 +139,25 @@ class LFG_Node:
         
         min_error = 10000
 
+        # filter out points around the robot
+        filtered_points = data.points
+        if self.robot_location is not None:
+            filtered_points = []
+            for d in data.points:
+                det = (t, cam_id, d.x, d.y)
+
+                curr_camparam = self.lfg.cam_params_dict[cam_id]
+                repro_uv = param2proj(curr_camparam) @ np.concatenate((self.robot_location + np.array([0,0,0.6]), [1])) # add a bit height to the robot
+                repro_uv = repro_uv[:2] / repro_uv[2]
+
+                if np.linalg.norm(repro_uv - np.array([d.x, d.y])) < 120.0:
+                    rospy.loginfo(f'[FILTER] Detected Lidar light at in camera {cam_id} at {d.x, d.y}, reprojection error = {np.linalg.norm(repro_uv - np.array([d.x, d.y]))}')
+                    continue
+                else:
+                    filtered_points.append(d)
+
         # find the closest detection to the current detection (filter out potential human noise)
-        for d in data.points:
+        for d in filtered_points:
             det = (t, cam_id, d.x, d.y)
             l_prior, repr_error = self.lfg.compute_position_prior(det)
             if l_prior is not None and min_error > repr_error:
@@ -150,7 +180,7 @@ class LFG_Node:
             return
         
         # if velocity in xy plane angle, it is a bounce
-        last_k_vels = self.lfg.get_last_k_velocity(10)
+        last_k_vels = self.lfg.get_last_k_velocity(20)
 
         if last_k_vels is not None:
             # xy angle change  
@@ -227,9 +257,11 @@ class LFG_Node:
     def callback6(self, data):
         self.add_to_graph(data, 'camera_6')
 
-
-
-    
+    def callback_odom(self, data):
+        
+        self.robot_location = np.array([data.pose.pose.position.x, data.pose.pose.position.y, data.pose.pose.position.z])
+        # print(f'Robot location: {self.robot_location}')
+        
 
     def publish_court_markers(self):
         '''
@@ -355,6 +387,7 @@ def listener():
     # rospy.Subscriber("/camera_4/detector_4/detections", Detections, lambda data: enqueue_callback(lfg_node.callback4,data),queue_size=2)
     # rospy.Subscriber("/camera_5/detector_5/detections", Detections, lambda data: enqueue_callback(lfg_node.callback5,data),queue_size=2)
     # rospy.Subscriber("/camera_6/detector_6/detections", Detections, lambda data: enqueue_callback(lfg_node.callback6,data),queue_size=2)
+    rospy.Subscriber("/wcodometry_global", Odometry, lambda data: enqueue_callback(lfg_node.callback_odom,data),queue_size=2)
 
     process_callback_queue()
 
