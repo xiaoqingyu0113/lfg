@@ -14,14 +14,14 @@ class OptimLayer(nn.Module):
             setattr(self, key, value)
 
         # pingpong
-        # p_noise = 0.010
-        # v_noise = 0.001
-        # w_noise = 0.1
-
-        # tennis
         p_noise = 0.010
         v_noise = 0.001
         w_noise = 0.1
+
+        # tennis
+        # p_noise = 0.010
+        # v_noise = 0.001
+        # w_noise = 0.1
 
         self.p_weight_param = nn.Parameter(1.0/torch.tensor([p_noise, p_noise, p_noise]))
         self.wv_weight_param = nn.Parameter(1.0/torch.tensor([v_noise, v_noise, v_noise, w_noise, w_noise, w_noise]))
@@ -134,13 +134,16 @@ class OptimLayer(nn.Module):
         layer.to(x.device)
         if self.allow_grad:   
             sol,info = layer(sol, {'damping': self.damping})
-            if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
-                    return None, None, None
+            # print("no grad: ", info.status)
+
+            # if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
+            #         return None, None, None
         else:
             with torch.no_grad():
                 sol,info = layer(sol,{'damping': self.damping})
-                if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
-                    return None, None, None
+                # print("no grad: ", info.status)
+                # if np.any(info.status == th.NonlinearOptimizerStatus.MAX_ITERATIONS.FAIL):
+                #     return None, None, None
 
         return sol['p0'].unsqueeze(1), sol['v0'].unsqueeze(1), w0.unsqueeze(1) 
         # return sol[f'p{self.size-1}'].unsqueeze(1), sol[f'v{self.size-1}'].unsqueeze(1), sol['w0'].unsqueeze(1) # temporary, compare with ekf

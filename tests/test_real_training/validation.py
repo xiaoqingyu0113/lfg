@@ -22,7 +22,7 @@ from draw_util import draw_util
 
 
 # same seed in training
-
+import time
 
 def compute_valid_loss(cfg):
 
@@ -38,21 +38,25 @@ def compute_valid_loss(cfg):
     # load mnn
     
    
-    mnn = PhyTune()
-    autoregr = autoregr_PhyTune
-    mnn.load_state_dict(torch.load('logdir/traj_train/PhyTune/pos/real/OptimLayer/run19/model_PhyTune.pth'))
+    mnn = MNN()
+    autoregr = autoregr_MLP
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/model_MNN.pth'))
 
-    
     mnn.eval()
     mnn.to('cuda')
 
     mnn_est = OptimLayer(mnn, size=80, allow_grad=False, damping=0.1, max_iterations=30)
-    mnn_est.load_state_dict(torch.load('logdir/traj_train/PhyTune/pos/real/OptimLayer/run19/est_OptimLayer.pth'))
+    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real/OptimLayer/run44/run44/est_OptimLayer.pth'))
     # mnn_est.load_state_dict(torch.load('logdir/traj_train/MLP/pos/real/OptimLayer/run02/est_OptimLayer.pth'))
     mnn_est.eval()
     mnn_est.to('cuda')
     mnn_est.model = mnn
     
+    # LSTM override
+    # mnn = LSTM().to('cuda')
+    # mnn.load_state_dict(torch.load('logdir/traj_train/LSTM/pos/real/OptimLayer/run09/model_LSTM.pth'))
+    # autoregr = autoregr_LSTM
+
     # dataloader
     np.random.seed(42)
     torch.manual_seed(42)
@@ -61,8 +65,11 @@ def compute_valid_loss(cfg):
 
     total_loss = []
     for i, data in enumerate(test_loader):
+        _start = time.time()
         with torch.no_grad():
             pN_est = autoregr(data, mnn, mnn_est, cfg)
+        print(f'run time: {time.time()-_start:.4f}')
+        raise
         pN_gt = data[:, :,2:5]
         loss = loss_fn(pN_est, pN_gt)
         total_loss.append(loss)
@@ -131,7 +138,7 @@ def validate_3d_plot(cfg):
     model = BounceModel()
     total_params = sum(p.numel() for p in model.parameters())
     print(f'Total parameters in MNN: {total_params}')
-    raise
+    
 
     mnn.compile()
     mnn.to('cuda')
@@ -174,8 +181,8 @@ def validate_3d_plot(cfg):
 
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
-    # compute_valid_loss(cfg)
-    draw_validation_loss_bar(cfg)
+    compute_valid_loss(cfg)
+    # draw_validation_loss_bar(cfg)
     # validate_3d_plot(cfg)
 
 

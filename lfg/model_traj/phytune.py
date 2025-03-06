@@ -191,7 +191,6 @@ def autoregr_PhyTune(data, model, est, cfg):
     if est is not None:
         p0, v0, w0 = est(data[:,:est.size,1:5], w0=w0)
     
-    
 
     d_tN = torch.diff(tN, dim=1)
     
