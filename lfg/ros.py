@@ -100,7 +100,7 @@ class LFG:
         params = gtsam.ISAM2Params()
 
         ## GN optimizer
-        params.setRelinearizeThreshold(0.75) # used to be 0.75
+        params.setRelinearizeThreshold(0.9) # used to be 0.75
         params.relinearizeSkip = 50       
              
         ## Dogleg Optimizer [TOO SLOW]

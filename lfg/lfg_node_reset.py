@@ -62,7 +62,7 @@ class LFG_Node:
         self.verbose = verbose
 
         self.pred_params = {'duration': 3.0,
-                            'N': 100} # configure the time period and resolution of the prediction
+                            'N': 200} # configure the time period and resolution of the prediction
         
         self.path_publisher = rospy.Publisher('/ball/rollout/path', Path, queue_size=1)
         self.ball_publisher = rospy.Publisher('/ball/rollout/pos', PoseStamped, queue_size=1)
