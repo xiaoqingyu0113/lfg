@@ -174,8 +174,8 @@ def validate_3d_plot(cfg):
 
 @hydra.main(version_base=None, config_path='../../conf', config_name='config')
 def main(cfg):
-    # compute_valid_loss(cfg)
-    draw_validation_loss_bar(cfg)
+    compute_valid_loss(cfg)
+    # draw_validation_loss_bar(cfg)
     # validate_3d_plot(cfg)
 
 

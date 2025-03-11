@@ -14,7 +14,7 @@ import numpy as np
 import torch_tensorrt
 
 from train_real_traj import RealTrajectoryDataset
-from lfg.model_traj.mnn import MNN, autoregr_MNN, AeroModel, BounceModel
+from lfg.model_traj.mnnl import MNNL, autoregr_MNNL, AeroModel, BounceModel
 
 
 
@@ -23,7 +23,7 @@ from draw_util import draw_util
 import numba
 import logging
 
-from lfg.derive2 import bounce_forward, bounce_jacobian, gs2d, dgs2d
+from lfg.derive_mnnl import bounce_forward, bounce_jacobian, gs2d, dgs2d
 
 DTYPE = np.float64
 DTYPE_TORCH = torch.float64
@@ -31,19 +31,19 @@ DTYPE_TORCH = torch.float64
 
 
 def get_original_model(compile=True):
-    mnn = MNN(z0=0.010)
-    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run40/model_MNN.pth'))
+    mnn = MNNL(z0=0.010)
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNNL/pos/real_tennis/OptimLayer/run00/model_MNNL.pth'))
     mnn.eval()
     if compile:
         mnn.compile()
     mnn.to('cuda')
 
     mnn_est = OptimLayer(mnn, size=80, allow_grad=False, damping=0.1, max_iterations=30)
-    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run40/est_OptimLayer.pth'))
+    mnn_est.load_state_dict(torch.load('logdir/traj_train/MNNL/pos/real_tennis/OptimLayer/run00/est_OptimLayer.pth'))
     mnn_est.eval()
     mnn_est.to('cuda')
     mnn_est.model = mnn
-    return mnn, mnn_est, autoregr_MNN
+    return mnn, mnn_est, autoregr_MNNL
 
 
 
@@ -58,8 +58,8 @@ def get_tensorRT_model():
     return mnn, mnn_est, autoregr_MNN
 
 def get_np_params():
-    mnn = MNN(z0=0.010)
-    mnn.load_state_dict(torch.load('logdir/traj_train/MNN/pos/real_tennis/OptimLayer/run40/model_MNN.pth'))
+    mnn = MNNL(z0=0.010)
+    mnn.load_state_dict(torch.load('logdir/traj_train/MNNL/pos/real_tennis/OptimLayer/run00/model_MNNL.pth'))
     
     aero_model = mnn.aero_layer
     bounce_model = mnn.bc_layer
@@ -94,39 +94,7 @@ def gs2d_torch(v2d,w2d):
 
     return R, v_local, w_local
 
-# def gs2d(v2d, w2d):
-#     '''
-#     passed the test
-#     '''
-#     v_normal = v2d / (np.linalg.norm(v2d) + 1e-8)
-#     R = np.array([
-#         [v_normal[0], -v_normal[1]], 
-#         [v_normal[1], v_normal[0]]   
-#     ])
-#     v_local = R.T@ v2d
-#     w_local = R.T@ w2d
 
-#     return R, v_local, w_local
-
-# def dgs2d(v2d, w2d):
-#     '''
-#     passed accuracy test   
-#     '''
-#     vx, vy = v2d
-#     wx, wy = w2d
-#     eps=  1e-8
-#     g = np.sqrt((vx**2 + vy**2 + eps))
-#     tmp_y2 = vy**2 + eps
-#     tmp_x2 = vx**2 + eps
-#     tmp_xy = -vx*vy
-#     J_vnorm_v = np.array([[tmp_y2, tmp_xy], [tmp_xy, tmp_x2]]) / g**3
-#     J_R_vn = np.array([[1.0, 0.0], [0.0, -1.0],[0.0, 1.0],[1.0, 0.0]])
-#     J_R_v = J_R_vn @ J_vnorm_v
-#     J_vlocal_v = np.array([[vx, vy],[0,0]])/g
-#     J_wlocal_v = np.array([[wx, wy],[wy, -wx]]) @ J_vnorm_v
-#     J_wlocal_w = np.array([[vx, vy],[-vy, vx]])/g
-
-#     return J_R_v, J_vlocal_v, J_wlocal_v, J_wlocal_w
 
 
 _, global_bounce_params = get_np_params()
@@ -138,13 +106,9 @@ global_bounce_layer1_weight = global_bounce_params['layer1.0.weight']
 global_bounce_layer1_bias = global_bounce_params['layer1.0.bias']
 global_bounce_layer2_weight = global_bounce_params['layer2.0.weight']
 global_bounce_layer2_bias = global_bounce_params['layer2.0.bias']
-global_bounce_layer3_weight = global_bounce_params['layer3.0.weight']
-global_bounce_layer3_bias = global_bounce_params['layer3.0.bias']
 
 global_dec_0_weight = global_bounce_params['dec.0.weight']
 global_dec_0_bias = global_bounce_params['dec.0.bias']
-global_dec_2_weight = global_bounce_params['dec.2.weight']
-global_dec_2_bias = global_bounce_params['dec.2.bias']
 
 
 
@@ -152,14 +116,12 @@ def forward_twin(v,w):
     return _forward_twin(global_bounce_recode_weight, global_bounce_recode_bias,
                         global_bounce_layer1_weight, global_bounce_layer1_bias,
                         global_bounce_layer2_weight, global_bounce_layer2_bias,
-                        global_bounce_layer3_weight, global_bounce_layer3_bias,
                         global_dec_0_weight, global_dec_0_bias,
-                        global_dec_2_weight, global_dec_2_bias,
                         v, w)
 
 def _forward_twin(recode_weight, recode_bias, layer1_weight, layer1_bias, 
-                        layer2_weight, layer2_bias, layer3_weight, layer3_bias,
-                        dec_0_weight, dec_0_bias, dec_2_weight, dec_2_bias, v, w):
+                        layer2_weight, layer2_bias,
+                        dec_0_weight, dec_0_bias, v, w):
     
     ## set up the parameters
     recode_weight = torch.tensor(recode_weight)
@@ -168,12 +130,8 @@ def _forward_twin(recode_weight, recode_bias, layer1_weight, layer1_bias,
     layer1_bias = torch.tensor(layer1_bias)
     layer2_weight = torch.tensor(layer2_weight)
     layer2_bias = torch.tensor(layer2_bias)
-    layer3_weight = torch.tensor(layer3_weight)
-    layer3_bias = torch.tensor(layer3_bias)
     dec_0_weight = torch.tensor(dec_0_weight)
     dec_0_bias = torch.tensor(dec_0_bias)
-    dec_2_weight = torch.tensor(dec_2_weight)
-    dec_2_bias = torch.tensor(dec_2_bias)
 
     
     w = w@ recode_weight.T + recode_bias
@@ -199,12 +157,10 @@ def _forward_twin(recode_weight, recode_bias, layer1_weight, layer1_bias,
     h0 = relu(x@layer1_weight.T + layer1_bias)
     h1 = relu(h0@layer2_weight.T + layer2_bias)*h0 + h0
 
-    h2 = relu(h1@layer3_weight.T + layer3_bias)*h1 + h1
 
 
-    x1 = relu(h2@dec_0_weight.T + dec_0_bias)
-    x2 = x1@dec_2_weight.T + dec_2_bias
- 
+    x1 = h1@dec_0_weight.T + dec_0_bias
+    x2 = x1
     
     v2d_local_new = x2[:2] * 3.0
     vz_new = x2[2:3] * 3.0

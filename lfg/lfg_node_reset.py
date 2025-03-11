@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from lfg.ros import LFG, param2proj
 
-from lfg.derive import predict
+from lfg.derive_mnnl import predict
 import rospy
 from std_srvs.srv import Empty, EmptyResponse
 from ball_detection_new.msg import Detections

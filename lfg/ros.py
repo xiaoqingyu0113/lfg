@@ -2,7 +2,7 @@ import numpy as np
 
 import gtsam
 from gtsam.symbol_shorthand import X, L, V, W
-from lfg.derive import PriorFactor3, PositionFactor, VWFactor, predict, bounce_forward, aero_forward
+from lfg.derive_mnnl import PriorFactor3, PositionFactor, VWFactor, predict, bounce_forward, aero_forward
 import cv2
 import yaml
 import os
