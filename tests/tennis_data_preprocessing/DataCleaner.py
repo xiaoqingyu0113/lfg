@@ -12,6 +12,8 @@ import rosbag
 from pycamera import triangulate, CameraParam, set_axes_equal
 import yaml
 
+INITIALDIR = "~/Downloads/20241209_tennis"
+SAVE_DIR = "data/real/detections_tennis"
 
 def read_from_bag(bag_file):
     bag = rosbag.Bag(bag_file)
@@ -165,7 +167,7 @@ class DataCleaner:
         for camera_id, points in detections.items():
             detections[camera_id] = points.tolist()
 
-        with open(f'data/real/detections_tennis/{file}.json', 'w') as f:
+        with open(f'{SAVE_DIR}/{file}.json', 'w') as f:
             json.dump(detections, f, indent=4)
 
         print(f'saved to {file}.json')
@@ -174,7 +176,7 @@ class DataCleaner:
 
     
     def open_bag(self, event):
-        file = filedialog.askopenfilename(initialdir="~/Downloads/20241209_tennis")
+        file = filedialog.askopenfilename(initialdir=INITIALDIR)
         if file and file.endswith('.bag'):
             self.states['detections'] = read_from_bag(file)
             # draw the detections on canvas

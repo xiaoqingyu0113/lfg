@@ -156,6 +156,8 @@ class VBetweenFactor(gtsam.CustomFactor):
 
 # params
 N = 50
+total_time = 50
+dt = total_time / (N-1)  # time step
 gif_name = "trajectory_following_3.gif"
 # Create a graph
 isam2 = gtsam.ISAM2(gtsam.ISAM2Params())
@@ -164,27 +166,27 @@ graph = gtsam.NonlinearFactorGraph()
 
 
 start = np.array([0, 0, 0])
-goal = np.array([10, 10, 3*np.pi/3])
+goal = np.array([10, 10, 0*np.pi/3])
 v_start = np.array([0, 0])
 v_goal = np.array([0, 0])
 
 for i in range(N-1):
-    graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.1, 0.1, 0.1])), X(i), V(i), X(i+1), i, i+1))
-    graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([1, 1])), V(i), np.array([0, 0])))
+    graph.push_back(DynFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.5, 0.5, 0.5])), X(i), V(i), X(i+1), 0, dt))
+    graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([5, 5])), V(i), np.array([0, 0])))
     if i < N-2:
-        graph.push_back(VBetweenFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([10, 10])), V(i), V(i+1)))
+        graph.push_back(VBetweenFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([50, 50])), V(i), V(i+1)))
 
-graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(0), start))
-graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001, 0.0001])), X(N-1), goal))
-graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001])), V(0), v_start))
-graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0001, 0.0001])), V(0), v_goal))
+graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0005, 0.0005, 0.0005])), X(0), start))
+graph.push_back(PriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0005, 0.0005, 0.0005])), X(N-1), goal))
+graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0005, 0.0005])), V(N-1), v_start))
+graph.push_back(VPriorFactor(gtsam.noiseModel.Diagonal.Sigmas(np.array([0.0005, 0.0005])), V(0), v_goal))
 
 
 # add estimate
 initial_estimate.insert(X(0), start)
 initial_estimate.insert(X(N-1), goal)
-initial_estimate.insert(V(0), np.array([0, 0]))
-
+initial_estimate.insert(V(0), v_start)
+initial_estimate.insert(V(N-1), v_goal)
 for i in range(1, N-1):
     initial_estimate.insert(X(i), (goal-start)/N*i + start)
     initial_estimate.insert(V(i), np.array([0, 0]))
@@ -194,6 +196,7 @@ for i in range(1, N-1):
 
 # inference using LM
 params = gtsam.LevenbergMarquardtParams()
+params.setVerbosity("ERROR")  # See
 optimizer = gtsam.LevenbergMarquardtOptimizer(graph, initial_estimate, params)
 
 INFERENCE_TIME = -time.time()
@@ -204,7 +207,11 @@ rst_x = np.array([result.atVector(X(i)) for i in range(N)])
 rst_v = np.array([result.atVector(V(i)) for i in range(N-1)])
 # print(rst_u)
 
-# plot the result
+dyn_error = [result.atVector(X(i+1)) - compute_pose(result.atVector(X(i)) , result.atVector(V(i)) , dt) for i in range(50-1)]
+for de in dyn_error:
+    print(de)# plot the result
+
+    
 fig, ax = plt.subplots(figsize=(6, 6))
 
 def update(i):
@@ -225,8 +232,11 @@ def update(i):
     ax.set_ylim(-5, 14)
     ax.set_title(f"Frame {i + 1}/{N}")
 
-# Create the animation
-ani = FuncAnimation(fig, update, frames=N, interval=50)
+update(0)  # Initial frame
+plt.show()
 
-# Save as a GIF
-ani.save(gif_name, writer=PillowWriter(fps=20))
+# # Create the animation
+# ani = FuncAnimation(fig, update, frames=N, interval=50)
+
+# # Save as a GIF
+# ani.save(gif_name, writer=PillowWriter(fps=20))
