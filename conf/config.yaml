@@ -1,5 +1,5 @@
 defaults:
-  - model: traj/mnnl
+  - model: traj/mnn
   - estimator: optim_layer
   - dataset: real/tennis_kpts
   - _self_

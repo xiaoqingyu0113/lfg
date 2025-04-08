@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 from lfg.ros import LFG, param2proj
 
-from lfg.derive import predict
+from lfg.derive_mnnl import predict
 import rospy
 from std_srvs.srv import Empty, EmptyResponse
 from ball_detection_new.msg import Detections
@@ -62,7 +62,7 @@ class LFG_Node:
         self.verbose = verbose
 
         self.pred_params = {'duration': 3.0,
-                            'N': 100} # configure the time period and resolution of the prediction
+                            'N': 200} # configure the time period and resolution of the prediction
         
         self.path_publisher = rospy.Publisher('/ball/rollout/path', Path, queue_size=1)
         self.ball_publisher = rospy.Publisher('/ball/rollout/pos', PoseStamped, queue_size=1)

@@ -227,8 +227,11 @@ class AeroModel(nn.Module):
         R, v_local, w_local = gram_schmidth(v_normalize, w_normalize)     
 
         feat = torch.cat([v_local[...,:1], w_local[...,:2]], dim=-1)
+
         h = self.layer1(feat)
         h2  = self.layer2(h)*h + h
+
+
         y = self.dec(h2)
         y =torch.matmul(R, y.unsqueeze(-1)).squeeze(-1)       
         
