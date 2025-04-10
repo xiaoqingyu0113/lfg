@@ -12,9 +12,8 @@ import rosbag
 from pycamera import triangulate, CameraParam, set_axes_equal
 import yaml
 
-INITIALDIR = "~/Downloads/20241209_tennis"
-SAVE_DIR = "data/real/detections_tennis"
-
+INITIALDIR = "/home/qingyu/bag_files/tennis/20250403_sensitivity"
+SAVE_DIR = "data/real/detections_tennis_spin"
 def read_from_bag(bag_file):
     bag = rosbag.Bag(bag_file)
     detections = {f'camera_{i}': [] for i in range(1, 7)}
@@ -27,6 +26,18 @@ def read_from_bag(bag_file):
     for camera_id, points in detections.items():
         detections[camera_id] = np.array(points)
     return detections
+
+def assign_tid_by_thresh(detections, threshold=30):
+    for camera_id, dets in detections.items():
+        assign_tid_per_camera_by_thresh(dets, threshold=threshold)
+
+def assign_tid_per_camera_by_thresh(dets, threshold=30, init_tid=0):
+    diff = lambda x, y: np.linalg.norm(x[4:6] - y[4:6])
+    traj_idx = init_tid
+    for i in range(1, len(dets)):
+        if diff(dets[i], dets[i-1]) > threshold:
+            traj_idx += 1
+        dets[i][0] = traj_idx
 
 class DataCleaner:
     def __init__(self, master):
@@ -75,6 +86,16 @@ class DataCleaner:
             'current_point_idx': 0,
             'figure': None,
             'axis': None,
+        }
+
+        # load bg image
+        self.bg_images = {
+            'camera_1': Image.open('conf/camera/22495525_calibration_Dec13_pose_kpts.jpg'),
+            'camera_2': Image.open('conf/camera/22495526_calibration_Dec13_pose_kpts.jpg'),
+            'camera_3': Image.open('conf/camera/22495527_calibration_Dec13_pose_kpts.jpg'),
+            'camera_4': Image.open('conf/camera/23045007_calibration_Dec13_pose_kpts.jpg'),
+            'camera_5': Image.open('conf/camera/23045008_calibration_Dec13_pose_kpts.jpg'),
+            'camera_6': Image.open('conf/camera/23045009_calibration_Dec13_pose_kpts.jpg'),
         }
 
         self.canvas = tk.Canvas(self.master, width=896, height=717)
@@ -176,9 +197,15 @@ class DataCleaner:
 
     
     def open_bag(self, event):
+        '''
+        read detections on either bag file or json file
+        '''
         file = filedialog.askopenfilename(initialdir=INITIALDIR)
+        self.states['current_point_idx'] = 0
+        self.states['current_traj'] = 0
         if file and file.endswith('.bag'):
             self.states['detections'] = read_from_bag(file)
+            assign_tid_by_thresh(self.states['detections'], threshold=30)
             # draw the detections on canvas
             self.draw_detections(event=None)
             # name of the bag file
@@ -202,6 +229,10 @@ class DataCleaner:
         next_idx = max(0, self.states['current_point_idx'] - 1)
         self.states['current_point_idx'] = next_idx
         self.states['detections'][self.camera_id.get()][curr, 0] = self.states['current_traj']
+        assign_tid_per_camera_by_thresh(self.states['detections'][self.camera_id.get()][self.states['current_point_idx']:], 
+                                        threshold=30, 
+                                        init_tid = self.states['current_traj'])
+        
         self.draw_detections(event=None)
     
     def next_point(self, event):
@@ -211,6 +242,9 @@ class DataCleaner:
         next_idx = min(len(self.states['detections'][self.camera_id.get()]) - 1, self.states['current_point_idx'] + 1)
         self.states['current_point_idx'] = next_idx
         self.states['detections'][self.camera_id.get()][curr,0] = self.states['current_traj']
+        assign_tid_per_camera_by_thresh(self.states['detections'][self.camera_id.get()][self.states['current_point_idx']:], 
+                                        threshold=30, 
+                                        init_tid = self.states['current_traj'])
         self.draw_detections(event=None)
 
     def more_prev_point(self, event):
@@ -220,6 +254,9 @@ class DataCleaner:
         next_idx = max(0, self.states['current_point_idx'] - 20)
         self.states['current_point_idx'] = next_idx
         self.states['detections'][self.camera_id.get()][next_idx+1: curr+1, 0] = self.states['current_traj']
+        assign_tid_per_camera_by_thresh(self.states['detections'][self.camera_id.get()][self.states['current_point_idx']:], 
+                                        threshold=30, 
+                                        init_tid = self.states['current_traj'])
         self.draw_detections(event=None)
        
 
@@ -230,18 +267,37 @@ class DataCleaner:
         next_idx = min(len(self.states['detections'][self.camera_id.get()]) - 1, self.states['current_point_idx'] + 20)
         self.states['current_point_idx'] = next_idx
         self.states['detections'][self.camera_id.get()][curr:next_idx,0] = self.states['current_traj']
+
+        assign_tid_per_camera_by_thresh(self.states['detections'][self.camera_id.get()][self.states['current_point_idx']:], 
+                                        threshold=30, 
+                                        init_tid = self.states['current_traj'])
         self.draw_detections(event=None)
         
     def increase_traj(self, event):
         if self.states['detections'] is None:
             return
-        self.states['current_traj'] += 1
+        
+        # find the first idex of the current trajectory
+        matches = self.states['detections'][self.camera_id.get()][:,0] == self.states['current_traj'] + 1
+        idx = np.where(matches)
+        if len(idx[0]) > 0:
+            self.states['current_traj'] += 1
+            self.states['current_point_idx'] = idx[0][0]
+
         self.draw_detections(event=None)
     
     def decrease_traj(self, event):
         if self.states['detections'] is None:
             return
-        self.states['current_traj'] = max(0, self.states['current_traj'] - 1)
+        
+       # find the first idex of the current trajectory
+        matches = self.states['detections'][self.camera_id.get()][:,0] == self.states['current_traj'] -1
+        idx = np.where(matches)
+
+        if len(idx[0]) > 0:
+            self.states['current_traj'] = max(0, self.states['current_traj'] - 1)
+            self.states['current_point_idx'] = idx[0][0]
+
         self.draw_detections(event=None)
 
     def delete_point(self, event):
@@ -254,6 +310,22 @@ class DataCleaner:
                 detections = np.delete(detections, idx, axis=0)
             self.states['detections'][self.camera_id.get()] = detections
             self.states['selected_points'] = []
+
+            '''
+            check if the whole trajectory is deleted, if so, modify the current and future trajectory idx
+            '''
+            traj_idx_before_delete = self.states['current_traj']
+            if (detections[:, 0] == traj_idx_before_delete).sum() == 0:
+                '''
+                that means the current trajectory is deleted, we need to find the next trajectory
+                '''
+                print(f'The whole trajectory {traj_idx_before_delete} is deleted')
+                for i in range(traj_idx_before_delete, 40):
+                    if (detections[:, 0] == i).sum() > 0:
+                        detections[detections[:, 0] == i,0] = i-1
+                        print(f'\t -trajectory {i} is changed to {i-1}')
+
+
             curr = self.states['current_point_idx']
             self.states['current_point_idx'] = min(len(self.states['detections'][self.camera_id.get()]) - 1, curr)
             self.draw_detections(event=None)
@@ -297,7 +369,7 @@ class DataCleaner:
             ax.clear()
 
 
-        
+        ax.imshow(self.bg_images[camera_id])
         ax.scatter(curr_traj_points[:, 4], curr_traj_points[:, 5], s=1, c='b')
         ax.plot(curr_traj_points[:, 4], curr_traj_points[:, 5], c='b', alpha=0.5)
         ax.scatter(points[self.states['current_point_idx'], 4], points[self.states['current_point_idx'], 5], s=3, c='r')
