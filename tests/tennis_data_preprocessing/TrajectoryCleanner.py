@@ -1,10 +1,14 @@
 import numpy as np
 import yaml
 from pycamera import triangulate, CameraParam, set_axes_equal
+from draw_util import draw_util
 import matplotlib.pyplot as plt
 import mplcursors
+import glob
 
 import json
+
+OUTPUT_FOLDER = 'data/real/tennis_triangulated_spin'
 
 def read_cam_calibration(filename):
     with open(filename,'r') as f:
@@ -50,7 +54,7 @@ def detections2points3d(detections, detection_filename):
         if prev_time is not None \
             and prev_camera_id != camera_id \
             and traj_idx == prev_traj_idx \
-            and timestamp - prev_time < 0.010:
+            and timestamp - prev_time < 0.050:
 
             prev_camparam = cam_params_dict[prev_camera_id]
             camparam = cam_params_dict[camera_id]
@@ -62,8 +66,8 @@ def detections2points3d(detections, detection_filename):
 
             loc_error = np.inf if prev_traj_idx != traj_idx else loc_error
 
-            if repro_error < 120:
-                points3d.append([traj_idx, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
+            # if repro_error < 120:
+            points3d.append([traj_idx, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
 
             if DEBUG:
                 pass
@@ -74,6 +78,36 @@ def detections2points3d(detections, detection_filename):
         prev_traj_idx = traj_idx
     
     return np.array(points3d)
+
+def generate_3d_dataset_without_plt_process(detection_folder):
+    detection_files = glob.glob(detection_folder + '/*.json')
+    print(f'Found {len(detection_files)} detection files in {detection_folder}')
+    for det_count, detection_file in enumerate(detection_files):
+        print(f'Processing ({det_count+1}/{len(detection_files)}) {detection_file}')
+        # load the detection file
+        with open(detection_file, 'r') as f:
+            detections = json.load(f)
+        
+
+
+        # flatten the detections
+        flattend_detections = []
+        start_time = detections['camera_1'][0][2] # zero the initial time
+        for camera_id, points in detections.items():
+           for p in points:
+                p[3] = camera_id
+                p[2] -= start_time # set time w.r.t the first detection
+                flattend_detections.append(p)
+
+        flattend_detections.sort(key=lambda x: x[2])
+        points = detections2points3d(flattend_detections, detection_file)
+
+        # save the points [trajectory_idx, timestamp, x, y, z, 0,0,0,1,0,0]
+        # the last 6 values are placeholders for v and w
+        detection_filename_ = detection_file.split('/')[-1].split('.')[0]
+        ppp = np.column_stack((np.ones_like(points[:, 1])*points[:, 0], points[:, 1], points[:, 2], points[:, 3], points[:, 4], np.zeros_like(points[:, 1]), np.zeros_like(points[:, 1]), np.zeros_like(points[:, 1]), np.ones_like(points[:, 1]), np.zeros_like(points[:, 1]), np.zeros_like(points[:, 1])))
+        np.savetxt(f'{OUTPUT_FOLDER}/{detection_filename_}.txt', ppp, fmt='%f')
+
 
 
 def generate_3d_dataset(detection_filename):
@@ -178,7 +212,7 @@ def generate_3d_dataset(detection_filename):
     plt.show()
 
 
-def load_trajectory():
+def check_lowest_z0():
     folder=  'data/real/tennis_triangulated'
     import glob
     traj_files = glob.glob(folder + '/*.txt')
@@ -194,8 +228,25 @@ def load_trajectory():
     print(f"min mean = {np.min(lowest_z)}")
     print(f"max mean = {np.max(lowest_z)}")
 
-import glob
-detection_file = glob.glob('data/real/detections_tennis/data7*.json')[0]
 
+def view_trajectory_from_file(traj_file):
+    points = np.loadtxt(traj_file)
+    fig = plt.figure()
+    ax = fig.add_subplot(111, projection='3d')
+    ax.plot(points[:400, 2], points[:400, 3], points[:400, 4])
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    draw_util.draw_tennis_court_outline(ax)
+    set_axes_equal(ax)
+    plt.show()
+
+# generate_3d_dataset_without_plt_process('data/real/detections_tennis_spin')
+view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n2_vel_25_bag1.txt")
+
+
+
+# import glob
+# detection_file = glob.glob('data/real/detections_tennis/data7*.json')[0]
 # generate_3d_dataset(detection_file)
-load_trajectory()
+# load_trajecheck_lowest_z0ctory()

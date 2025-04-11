@@ -80,37 +80,70 @@ def axis_bgc_white(ax):
 
 
 
-
-
-def draw_tennis_court_outline(ax,z0 = 0.0):
+def draw_tennis_court_outline(ax, z0=0.0):
     rects = dict()
     m_per_ft = 0.3048
-    rects['bottom_1'] = (np.array([0.0, 27/2.0, z0]),np.array([18.0, -27/2.0, z0]) )
-    rects['bottom_2'] = (np.array([18+21+21, 27/2.0, z0]),np.array([39*2, -27/2.0, z0]) )
-    rects['left_service'] = (np.array([18,13.5,z0]),np.array([39+21,0,z0]))
-    rects['right_service'] = (np.array([18,0,z0]),np.array([39+21,-13.5,z0]))
-    rects['left_side'] = (np.array([0,18,z0]),np.array([39*2,13.5,z0]))
-    rects['right_side'] = (np.array([0,-13.5,z0]),np.array([39*2,-18,z0]))
-    rects['net'] = (np.array([39,22,z0]), np.array([39,-22,z0+3]))
 
-    def draw_rectangle(ax, corner1,corner2,**argv):
-        if np.abs(corner1[2] - corner2[2]) <0.1:
-            ax.plot([corner1[0],corner2[0]],[corner1[1],corner1[1]],[corner1[1],corner1[1]],**argv)
-            ax.plot([corner1[0],corner2[0]],[corner2[1],corner2[1]],[corner1[1],corner1[1]],**argv)
-            ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
-            ax.plot([corner2[0],corner2[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
-        else:
-            ax.plot([corner1[0],corner1[0]],[corner2[1],corner2[1]],[corner1[1],corner2[1]],**argv)
-            ax.plot([corner1[0],corner1[0]],[corner1[1],corner1[1]],[corner1[1],corner2[1]],**argv)
-            ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
-            ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner2[1],corner2[1]],**argv)
+    # Define the court outlines in feet
+    rects['bottom_1'] = (np.array([0.0, 27/2.0, z0]), np.array([18.0, -27/2.0, z0]))
+    rects['bottom_2'] = (np.array([18+21+21, 27/2.0, z0]), np.array([39*2, -27/2.0, z0]))
+    rects['left_service'] = (np.array([18, 13.5, z0]), np.array([39+21, 0, z0]))
+    rects['right_service'] = (np.array([18, 0, z0]), np.array([39+21, -13.5, z0]))
+    rects['left_side'] = (np.array([0, 18, z0]), np.array([39*2, 13.5, z0]))
+    rects['right_side'] = (np.array([0, -13.5, z0]), np.array([39*2, -18, z0]))
+    rects['net'] = (np.array([39, 22, z0]), np.array([39, -22, z0+3]))
 
-    for k,v in rects.items():
-        if k == 'net':
-            draw_rectangle(ax,v[0]*m_per_ft,v[1]*m_per_ft,linewidth = 3, color='black')
+    def draw_rectangle(ax, c1, c2, **kwargs):
+        # Extract corners
+        x1, y1, z1 = c1
+        x2, y2, z2 = c2
 
-        else:
-            draw_rectangle(ax,v[0]*m_per_ft,v[1]*m_per_ft,linewidth = 3, color='black')
+        # Compute rectangle corners
+        corners = np.array([
+            [x1, y1, z1],
+            [x2, y1, z1],
+            [x2, y2, z2],
+            [x1, y2, z2],
+            [x1, y1, z1]  # Close the rectangle
+        ])
+
+        # Unpack for plotting
+        xs, ys, zs = corners.T
+        ax.plot(xs, ys, zs, **kwargs)
+
+    for k, (p1, p2) in rects.items():
+        draw_rectangle(ax, p1 * m_per_ft, p2 * m_per_ft, linewidth=2, color='black')
+
+
+# def draw_tennis_court_outline(ax,z0 = 0.0):
+#     rects = dict()
+#     m_per_ft = 0.3048
+#     rects['bottom_1'] = (np.array([0.0, 27/2.0, z0]),np.array([18.0, -27/2.0, z0]) )
+#     rects['bottom_2'] = (np.array([18+21+21, 27/2.0, z0]),np.array([39*2, -27/2.0, z0]) )
+#     rects['left_service'] = (np.array([18,13.5,z0]),np.array([39+21,0,z0]))
+#     rects['right_service'] = (np.array([18,0,z0]),np.array([39+21,-13.5,z0]))
+#     rects['left_side'] = (np.array([0,18,z0]),np.array([39*2,13.5,z0]))
+#     rects['right_side'] = (np.array([0,-13.5,z0]),np.array([39*2,-18,z0]))
+#     rects['net'] = (np.array([39,22,z0]), np.array([39,-22,z0+3]))
+
+#     def draw_rectangle(ax, corner1,corner2,**argv):
+#         if np.abs(corner1[2] - corner2[2]) <0.1:
+#             ax.plot([corner1[0],corner2[0]],[corner1[1],corner1[1]],[corner1[1],corner1[1]],**argv)
+#             ax.plot([corner1[0],corner2[0]],[corner2[1],corner2[1]],[corner1[1],corner1[1]],**argv)
+#             ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
+#             ax.plot([corner2[0],corner2[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
+#         else:
+#             ax.plot([corner1[0],corner1[0]],[corner2[1],corner2[1]],[corner1[1],corner2[1]],**argv)
+#             ax.plot([corner1[0],corner1[0]],[corner1[1],corner1[1]],[corner1[1],corner2[1]],**argv)
+#             ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner1[1],corner1[1]],**argv)
+#             ax.plot([corner1[0],corner1[0]],[corner1[1],corner2[1]],[corner2[1],corner2[1]],**argv)
+
+#     for k,v in rects.items():
+#         if k == 'net':
+#             draw_rectangle(ax,v[0]*m_per_ft,v[1]*m_per_ft,linewidth = 3, color='black')
+
+#         else:
+#             draw_rectangle(ax,v[0]*m_per_ft,v[1]*m_per_ft,linewidth = 3, color='black')
 
 def draw_pinpong_table_outline(ax,z0 = 0.0):
     rects = dict()

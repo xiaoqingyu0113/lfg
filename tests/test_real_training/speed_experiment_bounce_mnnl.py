@@ -61,6 +61,9 @@ def get_np_params():
     mnn = MNNL(z0=0.010)
     mnn.load_state_dict(torch.load('logdir/traj_train/MNNL/pos/real_tennis/OptimLayer/run00/model_MNNL.pth'))
     
+    print(sum(p.numel() for p in mnn.aero_layer.parameters()))
+    raise
+
     aero_model = mnn.aero_layer
     bounce_model = mnn.bc_layer
 

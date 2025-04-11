@@ -50,3 +50,8 @@ The resulting `.json` file will contain data in the format:
 }
 ```
 ## 2. Triangulated Data Cleanning
+Format of saved points:
+```python
+ [trajectory_idx, timestamp, x, y, z, 0, 0, 0, 1, 0, 0]
+```
+Note: the last 6 values are placeholders for velocity (v) and angular velocity (w)
