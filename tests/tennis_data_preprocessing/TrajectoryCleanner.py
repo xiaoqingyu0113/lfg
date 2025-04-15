@@ -32,7 +32,7 @@ def read_cam_calibration(filename):
 
     return cam_param
 
-def detections2points3d(detections, detection_filename):
+def detections2points3d(detections, detection_filename,tid_offset=0):
     DEBUG = True # if True, detection_filename should be provided
 
     camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
@@ -44,7 +44,7 @@ def detections2points3d(detections, detection_filename):
     prev_time = None
     prev_uv = None
     prev_camera_id = None
-    prev_traj_idx = None
+    prev_traj_idx = 0
 
     points3d = []
     
@@ -60,17 +60,18 @@ def detections2points3d(detections, detection_filename):
             camparam = cam_params_dict[camera_id]
 
             p = triangulate(np.array(prev_uv), np.array([u, v]), prev_camparam, camparam)
-            repro_error = np.linalg.norm(camparam.proj2img(p) - np.array([u, v]))
-
-            loc_error = np.linalg.norm(p - np.array(points3d[-1][2:5])) if len(points3d) > 0  else 0
-
-            loc_error = np.inf if prev_traj_idx != traj_idx else loc_error
+            # repro_error = np.linalg.norm(camparam.proj2img(p) - np.array([u, v]))
+            # loc_error = np.linalg.norm(p - np.array(points3d[-1][2:5])) if len(points3d) > 0  else 0
+            # loc_error = np.inf if prev_traj_idx != traj_idx else loc_error
 
             # if repro_error < 120:
             points3d.append([traj_idx, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
 
             if DEBUG:
                 pass
+        
+        # if traj_idx == prev_traj_idx +1:
+        #     timestamp = None
 
         prev_time = timestamp
         prev_uv = [u, v]
@@ -82,13 +83,15 @@ def detections2points3d(detections, detection_filename):
 def generate_3d_dataset_without_plt_process(detection_folder):
     detection_files = glob.glob(detection_folder + '/*.json')
     print(f'Found {len(detection_files)} detection files in {detection_folder}')
+
+    tid_offset = 0
+
     for det_count, detection_file in enumerate(detection_files):
         print(f'Processing ({det_count+1}/{len(detection_files)}) {detection_file}')
         # load the detection file
         with open(detection_file, 'r') as f:
             detections = json.load(f)
         
-
 
         # flatten the detections
         flattend_detections = []
@@ -99,8 +102,9 @@ def generate_3d_dataset_without_plt_process(detection_folder):
                 p[2] -= start_time # set time w.r.t the first detection
                 flattend_detections.append(p)
 
-        flattend_detections.sort(key=lambda x: x[2])
-        points = detections2points3d(flattend_detections, detection_file)
+        flattend_detections.sort(key=lambda x: (x[0], x[2]))
+        points = detections2points3d(flattend_detections, detection_file, tid_offset)
+        tid_offset = int(points[-1, 0]) + 1
 
         # save the points [trajectory_idx, timestamp, x, y, z, 0,0,0,1,0,0]
         # the last 6 values are placeholders for v and w
@@ -242,7 +246,7 @@ def view_trajectory_from_file(traj_file):
     plt.show()
 
 # generate_3d_dataset_without_plt_process('data/real/detections_tennis_spin')
-view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n2_vel_25_bag1.txt")
+view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag1.txt")
 
 
 

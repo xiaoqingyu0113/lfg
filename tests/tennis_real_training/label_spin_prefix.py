@@ -27,6 +27,13 @@ def parse_filename(filename: Path):
         raise ValueError(f"Filename '{filename}' does not match expected pattern.")
 
 
+def read_single_traj_file(filename):
+    '''
+    read a single trajectory file and return the data
+    '''
+    data = np.loadtxt(filename)
+    vw_ref = parse_filename(filename)
+    return data, vw_ref
 
 def read_traj_files(dirname):
     '''
@@ -36,8 +43,7 @@ def read_traj_files(dirname):
     traj_files = Path(dirname).glob('*.txt')
     traj_files_data = []
     for f in traj_files:
-        data = np.loadtxt(f)
-        vw_ref = parse_filename(f)
+        data, vw_ref = read_single_traj_file(f)
         traj_files_data.append((data, vw_ref))
     return traj_files_data
 
@@ -67,13 +73,13 @@ def unroll_by_tid(traj_files_data):
 
 
 
-def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.55, cm:float = 0.4):
+def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.05, cm:float = 0.001):
     acc = -cd * v * torch.linalg.norm(v)  + cm * torch.linalg.cross(w,v) + torch.tensor([0, 0, -9.81])
     return v + acc * dt
 
 def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.85):
     r = 0.020  # radius in meters
-    alpha = 0.4
+    alpha = 0.2
     k_v = ez
 
     # A, B, C, D matrices
@@ -97,72 +103,90 @@ def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.85):
 class PhyxModel(torch.nn.Module):
     def __init__(self):
         super(PhyxModel, self).__init__()
-        self.v0 = torch.nn.Parameter(torch.randn(3,))
-        self.w0 = torch.nn.Parameter(torch.randn(3,))
+        self.v0 = torch.nn.Parameter(torch.tensor([-1.0 ,  0.083664  ,10.5986]))
+        self.w0 = torch.nn.Parameter(torch.tensor([0.0, -30, 0.0]))
 
-    def forward(self,p0, time_stamps, z0 = 0.010):
+    def forward(self,p0, time_stamps, z0 = 0.020):
         
         p_out = [p0]
         v = self.v0
         w = self.w0
         p = p0
         for i in range(len(time_stamps)-1):
-            if p[2] < z0:
+            # print(f"p: {p[2]} v: {v[2]}")
+            if p[2] < z0 and v[2] < 0:
+                # print("bounce")
                 v, w = predict_bounce_roll(v, w)
-                p0 = p0 + v * (time_stamps[i+1] - time_stamps[i])
-                p_out.append(p0)
+                p = p + v * (time_stamps[i+1] - time_stamps[i])
+                p_out.append(p)
             else:
                 dt = time_stamps[i+1] - time_stamps[i]
                 v = predict_vel_aero(v, w, dt)
-                p0 = p0 + v * dt
-                p_out.append(p0)
+                p = p + v * dt
+                p_out.append(p)
         
         return torch.stack(p_out, dim=0)
-    
+
+
+# PhysxModel = PhyxModel()
+
+# pout = PhysxModel(torch.tensor([-18.24397 ,  0.0  ,0.6]), np.linspace(0, 2.0, 100))
+
+# # print(pout)
+# raise
 
 if __name__ == '__main__':
     traj_files_data = read_traj_files(TRAJ_DATASET_PATH)
     unrolled_data = unroll_by_tid(traj_files_data)
 
-    if DEBUG:
-        print(unrolled_data[-1][0])
-        print(unrolled_data[-1][1].shape)
-        print(unrolled_data[-1][2])
+    # if DEBUG:
+    #     print(unrolled_data[-1][0])
+    #     print(unrolled_data[-1][1].shape)
+    #     print(unrolled_data[-1][2])
 
     
-    tid1, data1, vw_ref1 = unrolled_data[1]
-    # data1 = torch.tensor(data1)
-    # timestamps = data1[:,1]
+    tid1, data1, vw_ref1 = unrolled_data[8]
+    data1 = data1[data1[:,0].astype('int') == 2,:]
 
-    # phyx_model = PhyxModel()
-    # phyx_model.train()
+    print(data1)
+    print(data1.shape)
+    print(tid1)
+    print(vw_ref1)
+    # print(vw_ref1)
+    # raise
+
+    data1 = torch.tensor(data1)
+    timestamps = data1[:,1]
+
+    phyx_model = PhyxModel()
+    phyx_model.train()
     
-    # loss_fn = torch.nn.MSELoss()
+    loss_fn = torch.nn.MSELoss()
 
-    # optimizer = torch.optim.Adam(phyx_model.parameters(), lr=0.8)
+    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=0.1)
    
-    # # training loop
-    # for epoch in range(500):
-    #     optimizer.zero_grad()
-    #     pout = phyx_model(data1[0,2:5], timestamps)
-    #     loss = loss_fn(pout, data1[:,2:5])
-    #     loss.backward()
-    #     optimizer.step()
+    # training loop
+    for epoch in range(200):
+        optimizer.zero_grad()
+        pout = phyx_model(data1[0,2:5], timestamps)
+        loss = loss_fn(pout, data1[:,2:5])
+        loss.backward()
+        optimizer.step()
 
-    #     if epoch % 10 == 0:
-    #         print(f"Epoch {epoch} | Loss: {loss.item():.4f}")
-    #         print(f"Curent est v0: {phyx_model.v0.detach().cpu().numpy()} | Curent est w0: {phyx_model.w0.detach().numpy()}")
+        if epoch % 10 == 0:
+            print(f"Epoch {epoch} | Loss: {loss.item():.4f}")
+            print(f"Curent est v0: {phyx_model.v0.detach().cpu().numpy()} | Curent est w0: {phyx_model.w0.detach().numpy()}")
     
 
     fig = plt.figure()
-    # data1 = data1.detach().cpu().numpy()
-    # pout = pout.detach().cpu().numpy()
+    data1 = data1.detach().cpu().numpy()
+    pout = pout.detach().cpu().numpy()
     ax = fig.add_subplot(111, projection='3d')
     # ax.scatter(data1[:,2], data1[:,3], data1[:,4], c='r', marker='o') 
     print(traj_files_data[1][0].shape)
     print(traj_files_data[1][1]) 
-    ax.scatter(traj_files_data[1][0][:,2], traj_files_data[1][0][:,3], traj_files_data[1][0][:,4], c='b') 
-    # ax.plot(pout[:,0], pout[:,1], pout[:,2], c='b')
+    ax.scatter(data1[:, 2], data1[:, 3], data1[:, 4], c='b', marker='o')
+    ax.plot(pout[:,0], pout[:,1], pout[:,2], c='r')
     ax.set_xlabel('X Label')
     ax.set_ylabel('Y Label')
     ax.set_zlabel('Z Label')    
