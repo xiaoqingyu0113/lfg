@@ -73,7 +73,7 @@ def unroll_by_tid(traj_files_data):
 
 
 
-def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.05, cm:float = 0.001):
+def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.001, cm:float = 0.0006):
     acc = -cd * v * torch.linalg.norm(v)  + cm * torch.linalg.cross(w,v) + torch.tensor([0, 0, -9.81])
     return v + acc * dt
 
@@ -103,8 +103,8 @@ def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.85):
 class PhyxModel(torch.nn.Module):
     def __init__(self):
         super(PhyxModel, self).__init__()
-        self.v0 = torch.nn.Parameter(torch.tensor([-1.0 ,  0.083664  ,10.5986]))
-        self.w0 = torch.nn.Parameter(torch.tensor([0.0, -30, 0.0]))
+        self.v0 = torch.nn.Parameter(torch.tensor([-0.01,  0.01  ,0.01]))
+        self.w0 = torch.nn.Parameter(torch.tensor([0.1, 0.1, 0.1]))
 
     def forward(self,p0, time_stamps, z0 = 0.020):
         
@@ -136,23 +136,30 @@ class PhyxModel(torch.nn.Module):
 # raise
 
 if __name__ == '__main__':
-    traj_files_data = read_traj_files(TRAJ_DATASET_PATH)
-    unrolled_data = unroll_by_tid(traj_files_data)
+    # traj_files_data = read_traj_files(TRAJ_DATASET_PATH)
+    # unrolled_data = unroll_by_tid(traj_files_data)
+    # tid1, data1, vw_ref1 = unrolled_data[8]
 
-    # if DEBUG:
-    #     print(unrolled_data[-1][0])
-    #     print(unrolled_data[-1][1].shape)
-    #     print(unrolled_data[-1][2])
+    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_n2_vel_15_bag1.txt')
 
-    
-    tid1, data1, vw_ref1 = unrolled_data[8]
-    data1 = data1[data1[:,0].astype('int') == 2,:]
 
-    print(data1)
-    print(data1.shape)
-    print(tid1)
-    print(vw_ref1)
-    # print(vw_ref1)
+    tid = 0
+    data, vw_ref = single_file_data
+    data1 = data[data[:, 0].astype(int) == tid]  # select only the first trajectory
+    data1  = data1[~np.isnan(data1).any(axis=1)]
+    data1 = data1[:600,:]
+
+    # # raise
+    # fig = plt.figure()
+    # ax = fig.add_subplot(111, projection='3d')
+    # # ax.scatter(data1[:,2], data1[:,3], data1[:,4], c='r', marker='o') 
+ 
+    # ax.scatter(data1[:, 2], data1[:, 3], data1[:, 4], c='b', marker='o')
+    # ax.set_xlabel('X Label')
+    # ax.set_ylabel('Y Label')
+    # ax.set_zlabel('Z Label')    
+    # draw_util.set_axes_equal(ax)
+    # plt.show()
     # raise
 
     data1 = torch.tensor(data1)
@@ -163,13 +170,13 @@ if __name__ == '__main__':
     
     loss_fn = torch.nn.MSELoss()
 
-    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=0.1)
+    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=0.3)
    
     # training loop
-    for epoch in range(200):
+    for epoch in range(1000):
         optimizer.zero_grad()
         pout = phyx_model(data1[0,2:5], timestamps)
-        loss = loss_fn(pout, data1[:,2:5])
+        loss = loss_fn(pout[:-1,:], data1[:-1,2:5])
         loss.backward()
         optimizer.step()
 
@@ -183,8 +190,7 @@ if __name__ == '__main__':
     pout = pout.detach().cpu().numpy()
     ax = fig.add_subplot(111, projection='3d')
     # ax.scatter(data1[:,2], data1[:,3], data1[:,4], c='r', marker='o') 
-    print(traj_files_data[1][0].shape)
-    print(traj_files_data[1][1]) 
+ 
     ax.scatter(data1[:, 2], data1[:, 3], data1[:, 4], c='b', marker='o')
     ax.plot(pout[:,0], pout[:,1], pout[:,2], c='r')
     ax.set_xlabel('X Label')
