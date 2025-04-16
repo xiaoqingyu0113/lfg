@@ -5,7 +5,7 @@ from draw_util import draw_util
 import matplotlib.pyplot as plt
 import mplcursors
 import glob
-
+from pathlib import Path
 import json
 
 OUTPUT_FOLDER = 'data/real/tennis_triangulated_spin'
@@ -54,7 +54,7 @@ def detections2points3d(detections, detection_filename,tid_offset=0):
         if prev_time is not None \
             and prev_camera_id != camera_id \
             and traj_idx == prev_traj_idx \
-            and timestamp - prev_time < 0.050:
+            and timestamp - prev_time < 0.010:
 
             prev_camparam = cam_params_dict[prev_camera_id]
             camparam = cam_params_dict[camera_id]
@@ -70,8 +70,8 @@ def detections2points3d(detections, detection_filename,tid_offset=0):
             if DEBUG:
                 pass
         
-        # if traj_idx == prev_traj_idx +1:
-        #     timestamp = None
+        if traj_idx == prev_traj_idx +1:
+            points3d.append([prev_traj_idx, timestamp, np.nan, np.nan, np.nan, 0, 0, 0, 0, 1, 0]) # placeholder for v and w
 
         prev_time = timestamp
         prev_uv = [u, v]
@@ -237,16 +237,22 @@ def view_trajectory_from_file(traj_file):
     points = np.loadtxt(traj_file)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(points[:400, 2], points[:400, 3], points[:400, 4])
+    ax.plot(points[:, 2], points[:, 3], points[:, 4],linewidth=0.3)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
     draw_util.draw_tennis_court_outline(ax)
     set_axes_equal(ax)
     plt.show()
+    plt.close()     
+# generate_3d_dataset_without_plt_process('data/real/d//etections_tennis_spin')
 
-# generate_3d_dataset_without_plt_process('data/real/detections_tennis_spin')
-view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag1.txt")
+dir = Path('data/real/tennis_triangulated_spin')
+txtfiles = dir.glob('*.txt')    
+for txtfile in txtfiles:
+    print(txtfile.name)
+    view_trajectory_from_file(txtfile)
+# view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag2.txt")    
 
 
 

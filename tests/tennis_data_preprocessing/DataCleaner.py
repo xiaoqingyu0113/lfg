@@ -12,7 +12,8 @@ import rosbag
 from pycamera import triangulate, CameraParam, set_axes_equal
 import yaml
 
-INITIALDIR = "~/lfg/data/real/detections_tennis_spin"
+# INITIALDIR = "~/lfg/data/real/detections_tennis_spin"
+INITALDIR = "~/
 SAVE_DIR = "data/real/detections_tennis_spin"
 def read_from_bag(bag_file):
     bag = rosbag.Bag(bag_file)
