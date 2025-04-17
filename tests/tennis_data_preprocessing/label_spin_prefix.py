@@ -52,7 +52,6 @@ def unroll_by_tid(traj_files_data):
     Unroll the data by trajectory id
     '''
     data = []
-    
 
     g_tid = 0
     for (data_frame, vw_ref) in traj_files_data:
@@ -140,16 +139,16 @@ if __name__ == '__main__':
     # unrolled_data = unroll_by_tid(traj_files_data)
     # tid1, data1, vw_ref1 = unrolled_data[8]
 
-    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_n2_vel_15_bag1.txt')
+    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p2_vel_15_bag1.txt')
 
 
-    tid = 0
+    tid = 0 
     data, vw_ref = single_file_data
     data1 = data[data[:, 0].astype(int) == tid]  # select only the first trajectory
     data1  = data1[~np.isnan(data1).any(axis=1)]
     data1 = data1[:600,:]
 
-    # # raise
+    # raise
     # fig = plt.figure()
     # ax = fig.add_subplot(111, projection='3d')
     # # ax.scatter(data1[:,2], data1[:,3], data1[:,4], c='r', marker='o') 
