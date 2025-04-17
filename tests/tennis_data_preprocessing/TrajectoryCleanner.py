@@ -32,7 +32,7 @@ def read_cam_calibration(filename):
 
     return cam_param
 
-def detections2points3d(detections, detection_filename,tid_offset=0):
+def detections2points3d(detections,tid_offset=0):
     DEBUG = True # if True, detection_filename should be provided
 
     camera_names = ['22495525','22495526','22495527','23045007','23045008','23045009']
@@ -65,13 +65,13 @@ def detections2points3d(detections, detection_filename,tid_offset=0):
             # loc_error = np.inf if prev_traj_idx != traj_idx else loc_error
 
             # if repro_error < 120:
-            points3d.append([traj_idx, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
+            points3d.append([traj_idx+tid_offset, timestamp, p[0], p[1], p[2], 0, 0, 0, 0, 1, 0]) # placeholder for v and w
 
             if DEBUG:
                 pass
         
         if traj_idx == prev_traj_idx +1:
-            points3d.append([prev_traj_idx, timestamp, np.nan, np.nan, np.nan, 0, 0, 0, 0, 1, 0]) # placeholder for v and w
+            points3d.append([prev_traj_idx+tid_offset, timestamp, np.nan, np.nan, np.nan, 0, 0, 0, 0, 1, 0]) # placeholder for v and w
 
         prev_time = timestamp
         prev_uv = [u, v]
@@ -103,8 +103,11 @@ def generate_3d_dataset_without_plt_process(detection_folder):
                 flattend_detections.append(p)
 
         flattend_detections.sort(key=lambda x: (x[0], x[2]))
-        points = detections2points3d(flattend_detections, detection_file, tid_offset)
+        points = detections2points3d(flattend_detections , tid_offset)
+
+   
         tid_offset = int(points[-1, 0]) + 1
+        print(f"tid_offset = {tid_offset}")
 
         # save the points [trajectory_idx, timestamp, x, y, z, 0,0,0,1,0,0]
         # the last 6 values are placeholders for v and w
@@ -245,18 +248,67 @@ def view_trajectory_from_file(traj_file):
     set_axes_equal(ax)
     plt.show()
     plt.close()     
-# generate_3d_dataset_without_plt_process('data/real/d//etections_tennis_spin')
-
-dir = Path('data/real/tennis_triangulated_spin')
-txtfiles = dir.glob('*.txt')    
-for txtfile in txtfiles:
-    print(txtfile.name)
-    view_trajectory_from_file(txtfile)
-# view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag2.txt")    
 
 
+def show_det_gif(det_file):
+    import matplotlib.pyplot as plt
+    from matplotlib.animation import FuncAnimation
+    from matplotlib.animation import FFMpegWriter
 
-# import glob
-# detection_file = glob.glob('data/real/detections_tennis/data7*.json')[0]
-# generate_3d_dataset(detection_file)
-# load_trajecheck_lowest_z0ctory()
+    fig, axes = plt.subplots(1, 3, figsize=(15, 5))
+    with open(det_file, 'r') as f:
+        detections = json.load(f)
+
+    points_cam = [np.array(v) for v in detections.values() if len(v) > 0]
+    for idx, pc in enumerate(points_cam):
+        pc[:, 3] = idx + 1  # set camera id
+    points_cam = np.vstack(points_cam)
+    points_cam = points_cam[np.lexsort((points_cam[:, 0], points_cam[:, 2]))]  # sort by trajectory index and timestamp
+
+
+    bg_image_files = [
+        'conf/camera/22495525_calibration_Dec13_pose_kpts.jpg',
+        'conf/camera/22495526_calibration_Dec13_pose_kpts.jpg',
+        'conf/camera/22495527_calibration_Dec13_pose_kpts.jpg'
+    ]
+
+    bg_images = [plt.imread(bg_image_file) for bg_image_file in bg_image_files]
+
+    max_length = len(points_cam)
+    print(f'max_length = {max_length}')
+
+    skip = 5
+    def update(frame):
+        data = points_cam[frame*skip]
+        tid, _, curr_t, camera_idx, u,v, = data
+        camera_idx = int(camera_idx)
+        ax = axes[camera_idx-1]
+        ax.clear()
+        ax.imshow(bg_images[camera_idx-1])
+        ax.scatter(u, v, s=10, c='r', label='Current Point')
+
+        point_so_far = points_cam[:frame*skip]
+        ax.plot(point_so_far[point_so_far[:, 3] == camera_idx, 4], 
+                point_so_far[point_so_far[:, 3] == camera_idx, 5], 
+                linewidth=1.0)
+
+        ax.set_title(f'Cam{camera_idx} | Traj{tid} | Time {curr_t - points_cam[0,2]:.3f}s')
+
+        ax.set_axis_off()
+        print(f"Camera {idx+1}: Frame {frame*skip}/{max_length-1}")
+ 
+    ani = FuncAnimation(fig, update, frames=max_length//skip)
+    ani.save('detections.mp4', writer=FFMpegWriter(fps=20))
+    plt.close(fig)
+
+if __name__ == '__main__':    
+    # generate_3d_dataset_without_plt_process('data/real/detections_tennis_spin')
+
+    # dir = Path('data/real/tennis_triangulated_spin')
+    # txtfiles = dir.glob('*.txt')    
+    # for txtfile in txtfiles:
+    #     print(txtfile.name)
+    #     view_trajectory_from_file(txtfile)
+    # view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag2.txt")    
+
+    show_det_gif(Path('data/real/detections_tennis_spin/spin_n2_vel_15_bag2.json'))

@@ -174,3 +174,4 @@ plots/
 !data/archive/*
 !data/real/triangulated/*.csv
 lfg/darknet
+*.mp4
