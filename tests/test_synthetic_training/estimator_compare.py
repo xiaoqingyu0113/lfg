@@ -182,14 +182,90 @@ def statistics():
     
 
 
+def sensitivity_analysis():
+    '''
+    estimation error vs inaccurate model parameters, such as drag or Magnus force coefficients
+    '''
+    import torch.nn as nn
+    # load synthetic dataset
+    dataset = TrajectoryDataset('data/synthetic/traj_general.csv', noise=0.0) # noise added later in iteration
+    data = dataset[0].cpu()
+    data[: , 2:5] = data[:, 2:5] + (torch.randn_like(data[:, 2:5])-0.5) *2 * 0.001 # add random noise (std =1 mm)
 
+    # load PhyTune
+    phytune = PhyTune().to('cuda:0')
+    phytune._init_gt()
+
+    i = 0
+    magnitude_error = []
+    orientation_error_degree = []
+    while i  < 10:
+        # update model parameters
+        phytune.param2 =  nn.Parameter(torch.tensor([[0.015 + (i-5)*0.003]]))
+        graph = OptimLayer(phytune, size=50, max_iterations=30, allow_grad=False, damping=0.001)    
+        graph.to('cuda:0')
 
         
+
+        # run estimation 
+        graph.size = 20
+        p, v, w = graph(data[None,:60, 1:5].to('cuda:0'), w0=data[0][None, None, 8:11].to('cuda:0'))
+        v = v.cpu().numpy()
+        v_gt = data[0, 5:8].cpu().numpy()
+
+        # print('Estimated velocity:', v)
+        # print('Ground truth velocity:', v_gt)
+
+        magnitude_error.append(np.linalg.norm(v - v_gt))
+        print(f'Magnitude error: {magnitude_error}')
+
+        theta_error = np.degrees(np.arccos(np.clip(np.dot(v, v_gt) / (np.linalg.norm(v) * np.linalg.norm(v_gt)), -1.0, 1.0)))[0,0]
+        orientation_error_degree.append(theta_error)
+        print(f'Orientation error (degrees): {orientation_error_degree}')
+
+        i+= 1
+def show_sensitive_result():
+    # Plot with dual y-axes
+    fig, ax1 = plt.subplots(figsize=(8, 6))
+    i_vals = np.arange(10)
+
+    magnus_coeffs = 0.015 + (i_vals - 5) * 0.003
+
+    # Errors
+    magnitude_error = [0.32791004, 0.2650643, 0.20229378, 0.13973847, 0.07791286,
+                    0.023382239, 0.054215647, 0.11499681, 0.177115, 0.23944765]
+    orientation_error = [4.487335, 3.6270382, 2.7667568, 1.9071097, 1.0479187,
+                        0.19683188, 0.675796, 1.5332727, 2.390892, 3.2485967]
+
+    # Define high contrast colors
+    color1 = 'darkred'
+    color2 = 'darkcyan'
+
+    # Set labels and title with larger font sizes
+    ax1.set_xlabel("Magnus Coefficient", fontsize=14)
+    ax1.set_ylabel("Magnitude Error", color=color1, fontsize=14)
+    ax1.set_ylim(0, 0.8)
+    ax1.plot(magnus_coeffs, magnitude_error, marker='o', color=color1, label='Magnitude Error', linewidth=2)
+    ax1.tick_params(axis='y', labelcolor=color1, labelsize=12)
+    ax1.tick_params(axis='x', labelsize=12)
+    ax1.grid(True)
+
+    # Second y-axis for orientation error
+    ax2 = ax1.twinx()
+    ax2.set_ylabel("Orientation Error (degrees)", color=color2, fontsize=14)
+    ax2.plot(magnus_coeffs, orientation_error, marker='s', color=color2, label='Orientation Error', linewidth=2)
+    ax2.tick_params(axis='y', labelcolor=color2, labelsize=12)
+
+    # plt.title("Error vs Magnus Coefficient with Dual Y-Axis", fontsize=16)
+    fig.tight_layout()
+    plt.show()
 
 if __name__ == "__main__":
     # run_compare()
     # read_compare()
-    statistics()
+    # statistics()
+    # sensitivity_analysis()
+    show_sensitive_result()
 
    
 

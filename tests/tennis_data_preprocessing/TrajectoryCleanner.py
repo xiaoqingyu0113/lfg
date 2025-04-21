@@ -49,7 +49,7 @@ def detections2points3d(detections,tid_offset=0):
     points3d = []
     
     for det in detections:
-        traj_idx, data_idx, timestamp, camera_id, u, v = det
+        traj_idx, timestamp, cam_timestamp, camera_id, u, v = det
         # triangulate the 3d point
         if prev_time is not None \
             and prev_camera_id != camera_id \
@@ -100,9 +100,10 @@ def generate_3d_dataset_without_plt_process(detection_folder):
            for p in points:
                 p[3] = camera_id
                 p[2] -= start_time # set time w.r.t the first detection
+                p[1] -= start_time # set time w.r.t the first detection
                 flattend_detections.append(p)
 
-        flattend_detections.sort(key=lambda x: (x[0], x[2]))
+        flattend_detections.sort(key=lambda x: (x[0], x[1]))
         points = detections2points3d(flattend_detections , tid_offset)
 
    
@@ -236,11 +237,11 @@ def check_lowest_z0():
     print(f"max mean = {np.max(lowest_z)}")
 
 
-def view_trajectory_from_file(traj_file):
+def view_trajectory_from_file(traj_file,**kwargs):
     points = np.loadtxt(traj_file)
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
-    ax.plot(points[:, 2], points[:, 3], points[:, 4],linewidth=0.3)
+    ax.plot(points[:, 2], points[:, 3], points[:, 4], **kwargs)
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
     ax.set_zlabel('Z')
@@ -248,6 +249,15 @@ def view_trajectory_from_file(traj_file):
     set_axes_equal(ax)
     plt.show()
     plt.close()     
+
+def draw_trajectory_from_file(ax, traj_file, **kwargs):
+    points = np.loadtxt(traj_file)
+    ax.plot(points[:, 2], points[:, 3], points[:, 4], **kwargs)
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    draw_util.draw_tennis_court_outline(ax)
+    set_axes_equal(ax)
 
 
 def show_det_gif(det_file):
@@ -311,4 +321,9 @@ if __name__ == '__main__':
     #     view_trajectory_from_file(txtfile)
     # view_trajectory_from_file("data/real/tennis_triangulated_spin/spin_n1_vel_15_bag2.txt")    
 
-    show_det_gif(Path('data/real/detections_tennis_spin/spin_n2_vel_15_bag2.json'))
+    # show_det_gif(Path('data/real/detections_tennis_spin/spin_n2_vel_15_bag2.json'))
+    fig = plt.figure(figsize=(10, 10))
+    ax = fig.add_subplot(111, projection='3d')
+    draw_trajectory_from_file(ax, "data/real/tennis_triangulated_spin/spin_n2_vel_35_bag1.txt", color='b', linewidth=0.3)
+    draw_trajectory_from_file(ax, "data/real/tennis_triangulated_spin/spin_p2_vel_35_bag1.txt", color='r', linewidth=0.3)
+    plt.show()

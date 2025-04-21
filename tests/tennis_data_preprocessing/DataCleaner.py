@@ -12,8 +12,8 @@ import rosbag
 from pycamera import triangulate, CameraParam, set_axes_equal
 import yaml
 
-# INITIALDIR = "~/lfg/data/real/detections_tennis_spin"
-INITIALDIR = "data/real/detections_tennis_spin"
+INITIALDIR = "~/bag_files/tennis/20250403_sensitivity"
+# INITIALDIR = "data/real/detections_tennis_spin"
 SAVE_DIR = "data/real/detections_tennis_spin"
 def read_from_bag(bag_file):
     bag = rosbag.Bag(bag_file)
@@ -21,7 +21,7 @@ def read_from_bag(bag_file):
     for topic, msg, t in bag.read_messages():
         camera_id = topic.split('/')[1]
         for p in msg.points:
-            detections[camera_id].append([-1, 0, msg.header.stamp.to_sec(),0, p.x, p.y]) # [traj_idx, data_idx, timestamp, camera_id, u, v, w0]
+            detections[camera_id].append([-1, t.to_sec(), msg.header.stamp.to_sec(),0, p.x, p.y]) # [traj_idx, record timestamp, mssg timestamp, camera_id, u, v, w0]
     bag.close()
 
     for camera_id, points in detections.items():
