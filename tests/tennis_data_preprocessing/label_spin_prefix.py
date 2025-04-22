@@ -72,7 +72,7 @@ def unroll_by_tid(traj_files_data):
 
 
 
-def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.0191, cm:float = 0.011):
+def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.0291, cm:float = 0.0011):
     acc = -cd * v * torch.linalg.norm(v)  + cm * torch.linalg.cross(w,v) + torch.tensor([0, 0, -9.81])
     # print("w", w)
     # print("v", v)
@@ -86,11 +86,11 @@ def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.019
 
 def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.9):
     r = 0.020  # radius in meters
-    alpha = 0.01
+    alpha = 0.05
     k_v = ez
 
     # A, B, C, D matrices
-    A = torch.diag(torch.tensor([1 - alpha, 1 - alpha, -k_v]))
+    A = torch.diag(torch.tensor([1 - alpha-0.4, 1 - alpha-0.4, -k_v]))
     
     B = torch.zeros(3, 3)
     B[0, 1] = alpha * r
@@ -103,7 +103,7 @@ def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.9):
     D = torch.diag(torch.tensor([1.0 - 1.5 * alpha, 1.0 - 1.5 * alpha, 1.0]))
 
     v_e = A @ v1 + B @ w1
-    w_e = C @ v1 + D @ w1
+    w_e = C @ v1*0.2 + D @ w1
 
     # print("bouce")
     return v_e, w_e
@@ -200,7 +200,7 @@ class PhyxModel(torch.nn.Module):
 
 
 def grad_descent_inference():
-    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p0_vel_35_bag1.txt')
+    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p2_vel_30_bag1.txt')
 
     tid = 1 
     data, vw_ref = single_file_data
@@ -217,13 +217,13 @@ def grad_descent_inference():
     
     loss_fn = torch.nn.L1Loss()
 
-    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=.01, betas=(0.9, 0.999))
+    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=.5, betas=(0.999, 0.999))
    
     est_len = 30
     v0 = estimate_velocity(data1[:est_len,2:5], timestamps[:est_len])
     v0 = v0.to(torch.float32)
     # training loop
-    for epoch in range(1000):
+    for epoch in range(300):
         optimizer.zero_grad()
         
         pout = phyx_model(data1[0,2:5], v0, timestamps)
@@ -250,135 +250,55 @@ def grad_descent_inference():
     draw_util.set_axes_equal(ax)
     plt.show()
 
-def optim_inference():
-    # read data
-    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p0_vel_15_bag1.txt')
-    tid = 1
+
+def grad_descent_validate():
+    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p2_vel_35_bag1.txt')
+
+    tid = 1 
     data, vw_ref = single_file_data
     tid += int(data[0,0])
-    data = data[:100,:]  # limit to 200 points for testing
     data1 = data[data[:, 0].astype(int) == tid, :]  # select only the first trajectory
     data1  = data1[~np.isnan(data1).any(axis=1)]
-    print(f"data 1 shape: {data1.shape}")
 
-    dtN = data1[1:,1] - data1[:-1,1]  # time differences
-    dtN = torch.tensor(dtN).to(torch.float32)
-    # print(f'dtN shape: {dtN}')
+    data1 = torch.tensor(data1)
+    data1 = data1[:,:]  # limit to 300 points for testing
+    timestamps = data1[:,1]
 
-    data1 = torch.tensor(data1).to(torch.float32)
-    n_data1 = data1.shape[0]
-    print(f'dtN shape: {dtN.shape}')
+    loss_fn = torch.nn.L1Loss()
+    phyx_model = PhyxModel()
+    phyx_model.w0 = torch.nn.Parameter(torch.tensor([6.8949647,  -15.3420421 ,  0.64865065]))
+    
 
-    # set up optimization problem
-    import theseus as th
-    def model(p, v, w, dt):
-        p = p[0]
-        v = v[0]
-        w = w[0]
-        dt = dt[0]
-        # Branching with differentiable masks
-        condition = (p[2] < 0.020) & (v[2] < 0)
-
-        # Predict both branches
-        v1, w1 = predict_bounce_roll(v, w)      # Bounce case
-        p1 = p + v1 * dt                        # Bounce position update
-
-        v2 = predict_vel_aero(v, w, dt)        # Regular aero case
-        p2 = p + v2 * dt                        # Regular position update
-
-        # Use differentiable masking to combine results
-        p_out = torch.where(condition, p1, p2)
-        v_out = torch.where(condition, v1, v2)
-        w_out = torch.where(condition, w1, w)
+   
+    est_len = 30
+    v0 = estimate_velocity(data1[:est_len,2:5], timestamps[:est_len])
+    v0 = v0.to(torch.float32)
+    # training loop
         
-        return p_out.unsqueeze(0), v_out.unsqueeze(0), w_out.unsqueeze(0)
+    pout = phyx_model(data1[0,2:5], v0, timestamps)
+      
+    loss = loss_fn(pout[:-1,:], data1[:-1,2:5])
+    print(f"Validation Loss: {loss.item():.4f}")
     
 
-    def _error_pos_prior(optim_vars, aux_vars):
-        p0, = optim_vars
-        p0_prior = aux_vars[0]
-        return p0.tensor - p0_prior.tensor
-    
-    def _error_pos( optim_vars, aux_vars):
-        p0, v0, p1 = optim_vars
-        dt = aux_vars[0]
-        return p1.tensor - (p0.tensor + v0.tensor*dt.tensor)
-    
-    def _error_vw(optim_vars, aux_vars):
-        p0, v0, w0, v1, w1 = optim_vars
-        dt = aux_vars[0]
-
-        p1_est, v1_est, w1_est = model(p0.tensor, v0.tensor, w0.tensor, dt.tensor)
-
-        error = torch.cat([v1_est - v1.tensor, w1_est - w1.tensor], dim=-1)
-
-        return error
-
-    p_weight = th.DiagonalCostWeight(torch.tensor([10.0,10.0,10.0]))
-    p_prior_weight = th.DiagonalCostWeight(torch.tensor([1,1,1])*1.0)
-
-    wv_weight = th.DiagonalCostWeight(torch.tensor([1,1,1,1,1,1])*10.0)
-    w0_weight = th.DiagonalCostWeight(torch.tensor([0.01, 0.01, 0.01]))
-
-    # objective and variables
-    objective = th.Objective()
-    vars = {}
-    # build graph
-    for i in range(data1.shape[0]):
-        vars.update({f'p{i}': th.Vector(3,  name=f'p{i}')})
-        vars.update({f'v{i}': th.Vector(3,  name=f'v{i}')})
-        vars.update({f'w{i}': th.Vector(3,  name=f'w{i}')})
-
-        vars.update({f'p_prior{i}': th.Vector(3,  name=f'p_prior{i}')})
-        vars.update({f'dt{i}': th.Vector(1,  name=f'dt{i}')})
-
-        objective.add(th.AutoDiffCostFunction([vars[f'p{i}']],
-                                                _error_pos_prior, 
-                                                3, 
-                                                aux_vars=[vars[f'p_prior{i}']],
-                                                cost_weight=p_prior_weight))
-        if i > 0:
-            objective.add(th.AutoDiffCostFunction([vars[f'p{i-1}'], vars[f'v{i-1}'], vars[f'p{i}']], 
-                                                    _error_pos, 
-                                                    3, 
-                                                    aux_vars=[vars[f'dt{i-1}']],
-                                                    cost_weight=p_weight))
-            
-            objective.add(th.AutoDiffCostFunction([vars[f'p{i-1}'], vars[f'v{i-1}'], vars[f'w{i-1}'], vars[f'v{i}'], vars[f'w{i}']],
-                                                    _error_vw, 
-                                                    6, 
-                                                    aux_vars=[vars[f'dt{i-1}']],
-                                                    cost_weight=wv_weight))
-    vars.update({'w_prior0': th.Vector(3, name='w_prior0')})
-    objective.add(th.AutoDiffCostFunction([vars[f'w{0}']],
-                                                _error_pos_prior, # same procedure
-                                                3, 
-                                                aux_vars=[vars[f'w_prior{0}']],
-                                                cost_weight= w0_weight))
-
-    # optimizer = th.LevenbergMarquardt(objective, max_iterations=self.max_iterations)
-    optimizer = th.LevenbergMarquardt(objective=objective, max_iterations=300)
-    layer = th.TheseusLayer(optimizer)
-
-    sol = {}
-    sol.update({'w_prior0': torch.zeros(1,3)})
-    for i in range(n_data1):
-        sol.update({f'p_prior{i}': data1[i:i+1, 2:5].clone()})
-        sol.update({f'p{i}': data1[i:i+1, 2:5].clone()})
-        sol.update({f'v{i}': torch.rand(1,3)})  # initial guess for velocity
-        sol.update({f'w{i}': torch.zeros(1,3)})
-        if i > 0:
-            sol.update({f'dt{i-1}': dtN[i-1].reshape(1,1)})
-
-    with torch.no_grad():
-        sol,info = layer(sol, {'damping': 0.1})
-    print(sol['p0'], sol['v0'], sol['w0'])
-
+    fig = plt.figure()
+    data1 = data1.detach().cpu().numpy()
+    pout = pout.detach().cpu().numpy()
+    ax = fig.add_subplot(111, projection='3d')
+    # ax.scatter(data1[:,2], data1[:,3], data1[:,4], c='r', marker='o') 
+ 
+    ax.scatter(data1[:, 2], data1[:, 3], data1[:, 4], c='b', marker='o')
+    ax.plot(pout[:,0], pout[:,1], pout[:,2], c='r')
+    ax.set_xlabel('X Label')
+    ax.set_ylabel('Y Label')
+    ax.set_zlabel('Z Label')    
+    draw_util.set_axes_equal(ax)
+    plt.show()
 
 if __name__ == '__main__':
     # traj_files_data = read_traj_files(TRAJ_DATASET_PATH)
     # unrolled_data = unroll_by_tid(traj_files_data)
     # tid1, data1, vw_ref1 = unrolled_data[8]
 
-    # optim_inference()
     grad_descent_inference()
+    # grad_descent_validate()
