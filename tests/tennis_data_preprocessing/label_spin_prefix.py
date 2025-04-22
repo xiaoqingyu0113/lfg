@@ -72,8 +72,12 @@ def unroll_by_tid(traj_files_data):
 
 
 
-def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.01, cm:float = 0.006):
+def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.0191, cm:float = 0.011):
     acc = -cd * v * torch.linalg.norm(v)  + cm * torch.linalg.cross(w,v) + torch.tensor([0, 0, -9.81])
+    # print("w", w)
+    # print("v", v)
+    # print("magnus", cm * torch.linalg.cross(w,v))
+    # print("drag", -cd * v * torch.linalg.norm(v))
     return v + acc * dt
 
 
@@ -82,7 +86,7 @@ def predict_vel_aero(v:torch.tensor ,w: torch.tensor, dt:float, cd:float = 0.01,
 
 def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.9):
     r = 0.020  # radius in meters
-    alpha = 0.4
+    alpha = 0.01
     k_v = ez
 
     # A, B, C, D matrices
@@ -101,6 +105,7 @@ def predict_bounce_roll(v1: torch.Tensor, w1: torch.Tensor, ez=0.9):
     v_e = A @ v1 + B @ w1
     w_e = C @ v1 + D @ w1
 
+    # print("bouce")
     return v_e, w_e
 
 class PhyxModel_step(torch.nn.Module):
@@ -195,7 +200,7 @@ class PhyxModel(torch.nn.Module):
 
 
 def grad_descent_inference():
-    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_n2_vel_35_bag1.txt')
+    single_file_data = read_single_traj_file(TRAJ_DATASET_PATH / 'spin_p0_vel_35_bag1.txt')
 
     tid = 1 
     data, vw_ref = single_file_data
@@ -204,7 +209,7 @@ def grad_descent_inference():
     data1  = data1[~np.isnan(data1).any(axis=1)]
 
     data1 = torch.tensor(data1)
-    data1 = data1[:350,:]  # limit to 300 points for testing
+    data1 = data1[:,:]  # limit to 300 points for testing
     timestamps = data1[:,1]
 
     phyx_model = PhyxModel()
@@ -212,9 +217,9 @@ def grad_descent_inference():
     
     loss_fn = torch.nn.L1Loss()
 
-    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=.06, betas=(0.9, 0.999))
+    optimizer = torch.optim.Adam(phyx_model.parameters(), lr=.01, betas=(0.9, 0.999))
    
-    est_len = 50
+    est_len = 30
     v0 = estimate_velocity(data1[:est_len,2:5], timestamps[:est_len])
     v0 = v0.to(torch.float32)
     # training loop
