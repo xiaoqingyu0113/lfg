@@ -2,6 +2,9 @@
 
 Learnable factor graph models for ball trajectory estimation and rollout, built around PyTorch and Hydra. The repository contains training code, pretrained-weight hooks, real and synthetic datasets, and a ROS1 inference node for tennis-ball tracking.
 
+## Paper
+
+[Read the paper](https://ieeexplore.ieee.org/stamp/stamp.jsp?arnumber=11127887)
 
 ## Installation
 
